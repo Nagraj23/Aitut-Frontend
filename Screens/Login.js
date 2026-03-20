@@ -3,309 +3,244 @@ import {
     View,
     Text,
     StyleSheet,
-    KeyboardAvoidingView,
     TextInput,
     TouchableOpacity,
     ScrollView,
-    Platform,
-    ToastAndroid,
-    Alert,
     Image,
+    Alert,
+    StatusBar,
     ActivityIndicator,
-    Dimensions
+    ToastAndroid,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AUTH_URL } from "../Constants/Api";
 
-const { width } = Dimensions.get("window");
-
-export default function Login({ navigation, setIsSignUp }) {
+export default function Login({ navigation }) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
 
-    // Load credentials if 'rememberMe' was true
+    // 1. Load Credentials on Startup
     useEffect(() => {
         const loadCredentials = async () => {
-            const savedEmail = await AsyncStorage.getItem("savedEmail");
-            const savedRememberMe = await AsyncStorage.getItem("rememberMe");
-            if (savedRememberMe === "true" && savedEmail) {
-                setEmail(savedEmail);
+            console.log("📂 Checking for saved credentials...");
+            try {
+                const savedRememberMe = await AsyncStorage.getItem("rememberMe");
+                if (savedRememberMe === "true") {
+                    const savedEmail = await AsyncStorage.getItem("savedEmail");
+                    const savedPassword = await AsyncStorage.getItem("savedPassword");
+
+                    setEmail(savedEmail || "");
+                    setPassword(savedPassword || "");
+                    setRememberMe(true);
+                    console.log("✅ Credentials auto-filled for:", savedEmail);
+                }
+            } catch (err) {
+                console.error("❌ Error loading credentials:", err);
             }
         };
         loadCredentials();
     }, []);
 
+    // 2. Login Logic
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
-            Alert.alert("Error", "Please enter both credentials");
+            Alert.alert("Error", "Email and Password fields cannot be empty");
             return;
         }
 
+        console.log("🚀 Attempting login for:", email);
         setLoading(true);
+
         try {
-            // Your API logic remains the same
-            // Simulating API call...
-            setTimeout(() => {
-                setLoading(false);
-                ToastAndroid.show("Success! 🚀", ToastAndroid.SHORT);
-                navigation.navigate("Initial");
-            }, 1500);
-        } catch (err) {
+            const response = await fetch(`${AUTH_URL}/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: email.trim(),
+                    password: password
+                }),
+            });
+
+            const data = await response.json();
+            console.log("📥 Login API Response Data:", data);
+
+            if (response.ok) {
+                const { accessToken, refreshToken, userData } = data;
+
+                if (!accessToken) {
+                    console.log("❌ Error: Access token missing in response");
+                    Alert.alert("Login Failed", "Access token missing in response");
+                    return;
+                }
+
+                // Store Tokens
+                await AsyncStorage.setItem("accessToken", accessToken);
+                if (refreshToken) {
+                    await AsyncStorage.setItem("refreshToken", refreshToken);
+                }
+
+                // Store User Details
+                if (userData) {
+                    await AsyncStorage.setItem("userDetails", JSON.stringify(userData));
+                    if (userData.id) {
+                        await AsyncStorage.setItem("userId", String(userData.id));
+                        console.log("🆔 User ID Stored:", userData.id);
+                    }
+                    console.log("👤 User Data Stored:", userData);
+                }
+
+                await AsyncStorage.setItem("isLoggedin", "true");
+
+                // Handle Remember Me logic
+                if (rememberMe) {
+                    await AsyncStorage.setItem("savedEmail", email);
+                    await AsyncStorage.setItem("savedPassword", password);
+                    await AsyncStorage.setItem("rememberMe", "true");
+                    console.log("💾 Credentials saved to storage");
+                } else {
+                    await AsyncStorage.removeItem("savedEmail");
+                    await AsyncStorage.removeItem("savedPassword");
+                    await AsyncStorage.setItem("rememberMe", "false");
+                    console.log("🧹 Credentials cleared (Remember Me off)");
+                }
+
+                // Final Verification Logs
+                console.log("🎯 Access Token saved:", await AsyncStorage.getItem("accessToken"));
+                console.log("🔄 Refresh Token saved:", await AsyncStorage.getItem("refreshToken"));
+
+                ToastAndroid.show("Login successful", ToastAndroid.LONG);
+                navigation.replace("Home");
+            } else {
+                console.log("❌ Login Rejected:", data.message);
+                Alert.alert("Login Failed", data.message || "Invalid email or password");
+            }
+        } catch (error) {
+            console.error("🌐 Connection Error:", error.message);
+            Alert.alert("Login Failed", "Unable to connect to server. Check your internet or IP.");
+        } finally {
             setLoading(false);
-            Alert.alert("Error", "Check your internet connection");
+            console.log("🏁 Login execution complete.");
         }
     };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-            <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#9788FB" />
 
-                {/* 🎨 Header Section */}
-                <View style={styles.header}>
-                    {/*<View style={styles.circle} />*/}
-                    <Text style={styles.title}>Welcome</Text>
-                    <Text style={styles.subtitle}>Sign in to your account</Text>
-                </View>
+            <View style={styles.headerBackground}>
+                <Text style={styles.brandName}>AiTut</Text>
+            </View>
 
-                {/* 📝 Input Section */}
-                <View style={styles.form}>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Email Address</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="name@example.com"
-                            placeholderTextColor="#94a3b8"
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            value={email}
-                            onChangeText={setEmail}
-                        />
+            <View style={styles.formCard}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                    <Text style={styles.welcomeTitle}>Welcome back</Text>
+                    <Text style={styles.welcomeSubtitle}>Sign in to enjoy the best experience</Text>
+
+                    <View style={styles.inputWrapper}>
+                        <Text style={styles.label}>Email</Text>
+                        <View style={styles.inputContainer}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="example@mail.com"
+                                placeholderTextColor="#CBD5E1"
+                                value={email}
+                                onChangeText={setEmail}
+                                autoCapitalize="none"
+                            />
+                        </View>
                     </View>
 
-                    <View style={styles.inputGroup}>
+                    <View style={styles.inputWrapper}>
                         <Text style={styles.label}>Password</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="••••••••"
-                            placeholderTextColor="#94a3b8"
-                            secureTextEntry
-                            value={password}
-                            onChangeText={setPassword}
-                        />
+                        <View style={styles.inputContainer}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="password"
+                                placeholderTextColor="#CBD5E1"
+                                secureTextEntry
+                                value={password}
+                                onChangeText={setPassword}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.optionsRow}>
+                        <TouchableOpacity
+                            onPress={() => setRememberMe(!rememberMe)}
+                            style={styles.checkboxContainer}
+                        >
+                            <View style={[styles.checkbox, rememberMe && styles.checkboxActive]} />
+                            <Text style={styles.optionText}>Remember me</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity>
+                            <Text style={styles.forgotText}>Forget Password?</Text>
+                        </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity
-                        onPress={() => navigation.navigate("Email")}
-                        style={styles.forgotContainer}
-                    >
-                        <Text style={styles.forgotText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-
-                    {/* 🚀 Primary Action Button */}
-                    <TouchableOpacity
-                        style={[styles.loginButton, loading && { opacity: 0.8 }]}
+                        style={[styles.loginButton, loading && { backgroundColor: "#818cf8" }]}
                         onPress={handleLogin}
                         disabled={loading}
                     >
-                        {loading ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.loginButtonText}>Sign In</Text>
-                        )}
+                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Log in</Text>}
                     </TouchableOpacity>
 
-                    {/* 🌐 Social Login Divider */}
                     <View style={styles.dividerContainer}>
                         <View style={styles.line} />
-                        <Text style={styles.dividerText}>OR</Text>
+                        <Text style={styles.dividerText}>Or login with</Text>
                         <View style={styles.line} />
                     </View>
 
-                    {/* Google Login Button */}
                     <View style={styles.socialRow}>
-                        {/* Google Button */}
-                        <TouchableOpacity style={[styles.socialBtn, styles.googleBtn]}>
-                            <Image
-                                source={require("../assets/google.png")} // Make sure this path is correct
-                                style={styles.socialIcon}
-                            />
-                            <Text style={styles.googleText}>Google</Text>
+                        <TouchableOpacity style={styles.socialCircle}>
+                            <Image source={require("../assets/google.png")} style={styles.socialIcon} />
                         </TouchableOpacity>
-
-                        {/* GitHub Button */}
-                        <TouchableOpacity style={[styles.socialBtn, styles.githubBtn]}>
-                            <Image
-                                source={require("../assets/github.png")} // Make sure this path is correct
-                                style={[styles.socialIcon]} // tintColor makes a PNG white
-                            />
-                            <Text style={styles.githubText}>GitHub</Text>
+                        <TouchableOpacity style={styles.socialCircle}>
+                            <Image source={require("../assets/git.png")} style={styles.socialIcon} />
                         </TouchableOpacity>
                     </View>
 
-                    {/* 👣 Footer */}
                     <View style={styles.footer}>
-                        <Text style={styles.footerText}>New here? </Text>
-                        <TouchableOpacity onPress={() => setIsSignUp(true)}>
-                            <Text style={styles.linkText}>Create Account</Text>
+                        <Text style={styles.footerText}>Don't have an account? </Text>
+                        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+                            <Text style={styles.signUpText}>Sign up</Text>
                         </TouchableOpacity>
                     </View>
-                </View>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                </ScrollView>
+            </View>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#ffffff",
-        marginTop:14
-    },
-    scrollContainer: {
-        flexGrow: 1,
-        paddingHorizontal: 30,
-        paddingTop: 60
-    },
-    header: {
-        marginBottom: 40,
-    },
-    circle: {
-        width: 50,
-        height: 50,
-        borderRadius: 15,
-        backgroundColor: "#4F46E5",
-        marginBottom: 20,
-    },
-    title: {
-        fontSize: 38,
-        fontWeight: "800",
-        color: "#1e293b",
-        letterSpacing: -1,
-    },
-    subtitle: {
-        fontSize: 20,
-        color: "#64748b",
-        marginTop: 5,
-    },
-    form: {
-        width: "100%",
-    },
-    inputGroup: {
-        marginBottom: 20,
-    },
-    label: {
-        fontSize: 20,
-        fontWeight: "600",
-        color: "#475569",
-        marginBottom: 8,
-        marginLeft: 4,
-    },
-    input: {
-        backgroundColor: "#f8fafc",
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        height: 46,
-        fontSize: 18,
-        color: "#1e293b",
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-    },
-    forgotContainer: {
-        alignSelf: "flex-end",
-        marginBottom: 30,
-    },
-    forgotText: {
-        color: "#4F46E5",
-        fontWeight: "600",
-        fontSize: 18,
-    },
-    loginButton: {
-        backgroundColor: "#4F46E5",
-        height: 50,
-        borderRadius: 12,
-        justifyContent: "center",
-        alignItems: "center",
-        shadowColor: "#4F46E5",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    loginButtonText: {
-        color: "#fff",
-        fontSize: 24,
-        fontWeight: "700",
-    },
-    dividerContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-        marginVertical: 30,
-    },
-    line: {
-        flex: 1,
-        height: 1,
-        backgroundColor: "#969696",
-    },
-    dividerText: {
-        marginHorizontal: 10,
-        color: "#94a3b8",
-        fontSize: 18,
-        fontWeight: "600",
-    },
-    socialRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        gap: 12,
-    },
-    socialBtn: {
-        flex: 1,
-        height: 56,
-        borderRadius: 12,
-        flexDirection: "row", // 👈 This aligns icon and text side-by-side
-        justifyContent: "center",
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-    },
-    socialIcon: {
-        width: 35,
-        height: 35,
-        marginRight: 8, // 👈 Adds space between icon and text
-        resizeMode: "contain",
-    },
-    googleBtn: {
-        backgroundColor: "#fff"
-    },
-    githubBtn: {
-        backgroundColor: "#ffffff",
-        borderColor: "#DBDBDB"
-    },
-    googleText: {
-        color: "#1e293b",
-        fontWeight: "600",
-        fontSize: 20
-    },
-    githubText: {
-        color: "#000000",
-        fontWeight: "600",
-        fontSize: 20
-    },
-    footer: {
-        flexDirection: "row",
-        justifyContent: "center",
-        marginTop: 40,
-        marginBottom: 20,
-    },
-    footerText: {
-        color: "#64748b",
-        fontSize: 18,
-    },
-    linkText: {
-        color: "#4F46E5",
-        fontWeight: "700",
-        fontSize: 18,
-    },
+    container: { flex: 1, backgroundColor: "#9788FB" },
+    headerBackground: { height: "23%", alignItems: "center", paddingTop: 20 },
+    brandName: { color: "#fff", fontSize: 50, fontWeight: "bold", marginTop: 15 },
+    formCard: { flex: 1, backgroundColor: "#fff", borderTopLeftRadius: 40, borderTopRightRadius: 40, paddingHorizontal: 30 },
+    scrollContent: { paddingTop: 30, paddingBottom: 20 },
+    welcomeTitle: { fontSize: 35, fontWeight: "bold", textAlign: "center", color: "#1E293B" },
+    welcomeSubtitle: { fontSize: 18, color: "#94A3B8", textAlign: "center", marginTop: 10, marginBottom: 30 },
+    inputWrapper: { marginBottom: 20 },
+    label: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
+    inputContainer: { borderWidth: 1, borderColor: "#F1F5F9", borderRadius: 25, height: 45, justifyContent: "center", paddingHorizontal: 20, },
+    input: { fontSize: 15, color: "#1E293B" },
+    optionsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 30 },
+    checkboxContainer: { flexDirection: "row", alignItems: "center" },
+    checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: "#CBD5E1", marginRight: 8 },
+    checkboxActive: { backgroundColor: "#9788FB", borderColor: "#9788FB" },
+    optionText: { fontSize: 15, color: "#64748B" },
+    forgotText: { fontSize: 15, fontWeight: "bold", color: "#1E293B" },
+    loginButton: { backgroundColor: "#4f46e5", height: 50, borderRadius: 30, justifyContent: "center", alignItems: "center", marginBottom: 30 },
+    loginButtonText: { fontSize: 24, fontWeight: "bold", color: "#ffffff" },
+    dividerContainer: { flexDirection: "row", alignItems: "center", marginBottom: 25 },
+    line: { flex: 1, height: 1, backgroundColor: "#C4C4C4" },
+    dividerText: { marginHorizontal: 15, color: "#242424", fontSize: 18 },
+    socialRow: { flexDirection: "row", justifyContent: "center", gap: 20, marginBottom: 30 },
+    socialCircle: { width: 50, height: 50, borderRadius: 30, backgroundColor: "#F8FAFC", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
+    socialIcon: { width: 35, height: 35, resizeMode: "contain" },
+    footer: { flexDirection: "row", justifyContent: "center" },
+    footerText: { color: "#94A3B8", fontSize: 20 },
+    signUpText: { fontWeight: "bold", color: "#1E293B", fontSize: 20 },
 });

@@ -12,30 +12,29 @@ import {
     Platform,
     ActivityIndicator,
     KeyboardAvoidingView,
+    Image,
 } from "react-native";
+// import axios from ""
 import Feather from "react-native-vector-icons/Feather";
-import { Picker } from "@react-native-picker/picker";
-import axios from "axios";
-// import { AUTH_URL } from "../constants/api";
 import { useNavigation } from "@react-navigation/native";
+import {AUTH_URL} from "../Constants/Api";
+import axios from "axios";
 
-const validateEmail = (email) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const ROLES = ['STUDENT', 'TEACHER', 'ADMIN'];  // Backend enum
 
-const validatePhoneNo = (phoneNo) =>
-    phoneNo.length === 10 && /^\d+$/.test(phoneNo);
+const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const Register = () => {
     const [formData, setFormData] = useState({
         name: "",
         email: "",
-        phoneNo: "",
         password: "",
-        role: "PARENT",
+        role: 'STUDENT',
     });
     const navigation = useNavigation();
     const [errors, setErrors] = useState({});
     const [isLoading, setIsLoading] = useState(false);
+    const [agree, setAgree] = useState(true);
 
     const handleChange = (key, value) => {
         setFormData((prev) => ({ ...prev, [key]: value }));
@@ -46,247 +45,218 @@ const Register = () => {
         let e = {};
         if (!formData.name) e.name = "Name required";
         if (!validateEmail(formData.email)) e.email = "Invalid email";
-        if (!validatePhoneNo(formData.phoneNo)) e.phoneNo = "Invalid phone";
-        if (formData.password.length < 6)
-            e.password = "Min 6 characters";
+        if (formData.password.length < 6) e.password = "Min 6 characters";
         setErrors(e);
         return Object.keys(e).length === 0;
     };
 
-    // 🚀 REGISTER WITH FULL LOGS
     const handleRegister = async () => {
-        if (!validateForm()) return;
-
-        console.log("🚀 [REGISTER] Button pressed");
-        console.log("📤 [REGISTER] Payload:", formData);
+        if (!validateForm() || !agree) {
+            if (!agree) Alert.alert("Terms", "Please agree to Terms & Conditions");
+            return;
+        }
 
         setIsLoading(true);
-
         try {
-            // const res = await axios.post(
-            //     `${AUTH_URL}/auth/register`,
-            //     formData
-            // );
+            console.log("📤 Payload:", formData);
+            const res = await axios.post(`${AUTH_URL}/register`, formData);
 
-            console.log("✅ [REGISTER] Response received");
-            console.log("🔢 Status:", res.status);
-            console.log("📥 Data:", res.data);
-            console.log("📦 Full Response:", res);
+            console.log("✅ Success:", res.data);
 
-            const message = res.data;
+            const message = res.data;  // "Registration successful! Check email for verification OTP."
 
             if (Platform.OS === "android") {
                 ToastAndroid.show(message, ToastAndroid.LONG);
-                navigation.navigate("Verify", { email: formData.email });
             } else {
-                Alert.alert("Success", message, [
-                    {
-                        text: "OK",
-                        onPress: () =>
-                            navigation.navigate("Verify", {
-                                email: formData.email,
-                            }),
-                    },
-                ]);
+                Alert.alert("Success", message);
             }
+
+            // 🔥 CRITICAL: Navigate to OTP Verify screen with email
+            navigation.navigate("VerifyOTP", { email: formData.email, type: "ACCOUNT" });
+
         } catch (err) {
-            console.log("❌ [REGISTER] Error occurred");
-            console.log("🧨 Full Error Object:", err);
-
-            if (err.response) {
-                console.log("🔢 Error Status:", err.response.status);
-                console.log("📥 Error Data:", err.response.data);
-                console.log("📦 Error Headers:", err.response.headers);
-            } else if (err.request) {
-                console.log("📡 No response received:", err.request);
-            } else {
-                console.log("⚠️ Request setup error:", err.message);
-            }
-
-            Alert.alert(
-                "Registration Failed",
-                err.response?.data || "Something went wrong"
-            );
+            console.error("❌ Error:", err.response?.data || err.message);
+            const errorMsg = err.response?.data || "Registration failed";
+            Alert.alert("Error", errorMsg.includes('Email already registered') ?
+                "Email already exists. Try login or different email." : errorMsg);
         } finally {
-            console.log("🏁 [REGISTER] Request finished");
-            setIsLoading(false);
+            setIsLoading(false);  // 🔥 REMOVED duplicate timeout
         }
     };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-            <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-            <ScrollView
-                contentContainerStyle={styles.scroll}
-                showsVerticalScrollIndicator={false}
+            {/* 🎨 Top Purple Header */}
+            <View style={styles.headerBackground}>
+                <Text style={styles.brandName}>AiTut</Text>
+                <View style={styles.logoContainer}>
+                    {/*<Image*/}
+                    {/*    source={require("../assets/logo.png")} // Add your logo here*/}
+                    {/*    style={styles.logo}*/}
+                    {/*    resizeMode="contain"*/}
+                    {/*/>*/}
+                </View>
+            </View>
+
+            {/* ⚪ White Form Card */}
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={styles.formCard}
             >
-                <Text style={styles.title}>Create Account</Text>
-                <Text style={styles.subtitle}>
-                    Sign up to start protecting your world with ShieldX
-                </Text>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                    <Text style={styles.welcomeTitle}>Register</Text>
+                    <Text style={styles.welcomeSubtitle}>Create new account for better service</Text>
 
-                {/* INPUTS */}
-                {[
-                    ["user", "Full Name", "name"],
-                    ["mail", "Email Address", "email"],
-                    ["phone", "Phone Number", "phoneNo"],
-                    ["lock", "Password", "password", true],
-                ].map(([icon, placeholder, key, secure]) => (
-                    <View key={key} style={styles.inputBlock}>
-                        <View
-                            style={[
-                                styles.inputBox,
-                                errors[key] && styles.errorBorder,
-                            ]}
-                        >
-                            <Feather
-                                name={icon}
-                                size={20}
-                                color="#8d99ae"
-                                style={styles.icon}
-                            />
+                    {/* Name Input */}
+                    <View style={styles.inputWrapper}>
+                        <Text style={styles.label}>Name</Text>
+                        <View style={[styles.inputContainer, errors.name && styles.errorBorder]}>
+                            <Feather name="user" size={18} color="#CBD5E1" style={styles.inputIcon} />
                             <TextInput
                                 style={styles.input}
-                                placeholder={placeholder}
-                                secureTextEntry={secure}
-                                keyboardType={
-                                    key === "email"
-                                        ? "email-address"
-                                        : key === "phoneNo"
-                                            ? "phone-pad"
-                                            : "default"
-                                }
-                                onChangeText={(v) => handleChange(key, v)}
+                                placeholder="Johan Mandela"
+                                placeholderTextColor="#CBD5E1"
+                                value={formData.name}
+                                onChangeText={(v) => handleChange("name", v)}
                             />
                         </View>
-                        {errors[key] && (
-                            <Text style={styles.errorText}>{errors[key]}</Text>
+                    </View>
+
+                    {/* Email Input */}
+                    <View style={styles.inputWrapper}>
+                        <Text style={styles.label}>Email</Text>
+                        <View style={[styles.inputContainer, errors.email && styles.errorBorder]}>
+                            <Feather name="mail" size={18} color="#CBD5E1" style={styles.inputIcon} />
+                            <TextInput
+                                style={styles.input}
+                                placeholder="brittnilonda5487@gmail.com"
+                                placeholderTextColor="#CBD5E1"
+                                keyboardType="email-address"
+                                value={formData.email}
+                                onChangeText={(v) => handleChange("email", v)}
+                            />
+                        </View>
+                    </View>
+
+                    {/* Password Input */}
+                    <View style={styles.inputWrapper}>
+                        <Text style={styles.label}>Password</Text>
+                        <View style={[styles.inputContainer, errors.password && styles.errorBorder]}>
+                            <Feather name="lock" size={18} color="#CBD5E1" style={styles.inputIcon} />
+                            <TextInput
+                                style={styles.input}
+                                placeholder="password"
+                                placeholderTextColor="#CBD5E1"
+                                secureTextEntry
+                                value={formData.password}
+                                onChangeText={(v) => handleChange("password", v)}
+                            />
+                        </View>
+                    </View>
+
+                    {/* Terms & Conditions */}
+                    <TouchableOpacity
+                        style={styles.termsRow}
+                        onPress={() => setAgree(!agree)}
+                    >
+                    </TouchableOpacity>
+
+                    {/* Sign Up Button */}
+                    <TouchableOpacity
+                        style={[styles.signUpButton, isLoading && { opacity: 0.7 }]}
+                        onPress={handleRegister}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator color="#1E293B" />
+                        ) : (
+                            <Text style={styles.signUpButtonText}>Sign up</Text>
                         )}
-                    </View>
-                ))}
+                    </TouchableOpacity>
 
-                {/* ROLE PICKER */}
-                <View style={styles.inputBlock}>
-                    <View style={styles.pickerBox}>
-                        <Feather
-                            name="users"
-                            size={20}
-                            color="#8d99ae"
-                            style={styles.icon}
-                        />
-                        <Picker
-                            selectedValue={formData.role}
-                            onValueChange={(v) => handleChange("role", v)}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label="I am a Parent" value="PARENT" />
-                            <Picker.Item label="I am a Child" value="CHILD" />
-                        </Picker>
+                    <View style={styles.dividerContainer}>
+                        <View style={styles.line} />
+                        <Text style={styles.dividerText}>Or Sign up with</Text>
+                        <View style={styles.line} />
                     </View>
-                </View>
 
-                {/* BUTTON */}
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleRegister}
-                    disabled={isLoading}
-                >
-                    {isLoading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.buttonText}>Register</Text>
-                    )}
-                </TouchableOpacity>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                    {/* Social Circles */}
+                    <View style={styles.socialRow}>
+                        <TouchableOpacity style={styles.socialCircle}>
+                            <Image source={require("../assets/google.png")} style={styles.socialIcon} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.socialCircle}>
+                            <Image source={require("../assets/git.png")} style={styles.socialIcon} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.footer}>
+                        <Text style={styles.footerText}>Already have an account? </Text>
+                        <TouchableOpacity onPress={() => navigation.navigate("Login")}>
+                            <Text style={styles.signInText}>Sign in</Text>
+                        </TouchableOpacity>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </View>
     );
 };
 
-export default Register;
-
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
-    container: {
+    container: { flex: 1, backgroundColor: "#9788FB" },
+    headerBackground: {
+        height: "25%",
+        // justifyContent: "center",
+        alignItems: "center",
+        paddingTop: 50,
+    },
+    brandName: { color: "#fff", fontSize: 36, fontWeight: "bold", marginBottom: 10 },
+    logo: { width: 70, height: 70 },
+    formCard: {
         flex: 1,
-        backgroundColor: "#f8f9fa",
+        backgroundColor: "#fff",
+        borderTopLeftRadius: 40,
+        borderTopRightRadius: 40,
+        marginTop: -30,
+        paddingHorizontal: 25,
     },
-    scroll: {
-        padding: 25,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: "800",
-        color: "#2b2d42",
-        marginBottom: 6,
-    },
-    subtitle: {
-        fontSize: 15,
-        color: "#8d99ae",
-        marginBottom: 25,
-    },
-    inputBlock: {
-        marginBottom: 15,
-    },
-    inputBox: {
+    scrollContent: { paddingTop: 20, paddingBottom: 40 },
+    welcomeTitle: { fontSize: 34, fontWeight: "bold", textAlign: "center", color: "#1E293B" },
+    welcomeSubtitle: { fontSize: 15, color: "#ADADAD", textAlign: "center", marginTop: 8, marginBottom: 25 },
+    inputWrapper: { marginBottom: 18 },
+    label: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
+    inputContainer: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#fff",
-        height: 55,
-        borderRadius: 14,
         borderWidth: 1,
-        borderColor: "#edf2f4",
-        paddingHorizontal: 15,
-        elevation: 2,
-    },
-    icon: {
-        marginRight: 12,
-    },
-    input: {
-        flex: 1,
-        fontSize: 16,
-        color: "#2b2d42",
-    },
-    pickerBox: {
-        flexDirection: "row",
-        alignItems: "center",
+        borderColor: "#F1F5F9",
+        borderRadius: 25,
         backgroundColor: "#fff",
-        height: 55,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: "#edf2f4",
+        height: 50,
         paddingHorizontal: 15,
-        elevation: 2,
+        elevation: 1,
     },
-    picker: {
-        flex: 1,
-        color: "#2b2d42",
-    },
-    button: {
-        backgroundColor: "#1E90FF",
-        height: 55,
-        borderRadius: 14,
-        justifyContent: "center",
-        alignItems: "center",
-        marginTop: 20,
-        elevation: 3,
-    },
-    buttonText: {
-        color: "#fff",
-        fontSize: 18,
-        fontWeight: "700",
-    },
-    errorText: {
-        color: "#ef233c",
-        fontSize: 12,
-        marginTop: 5,
-        marginLeft: 8,
-    },
-    errorBorder: {
-        borderColor: "#ef233c",
-    },
+    inputIcon: { marginRight: 10 },
+    input: { flex: 1, fontSize: 18, color: "#1E293B" },
+    errorBorder: { borderColor: "#ef233c" },
+    termsRow: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
+    checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: "#CBD5E1", marginRight: 10, justifyContent: "center", alignItems: "center" },
+    checkboxActive: { backgroundColor: "#9788FB", borderColor: "#9788FB" },
+    termsText: { fontSize: 12, color: "#64748B" },
+    boldText: { fontWeight: "bold", color: "#1E293B" },
+    signUpButton: { backgroundColor: "#4f46e5", height: 55, borderRadius: 30, justifyContent: "center", alignItems: "center", marginBottom: 20 },
+    signUpButtonText: { fontSize: 26, fontWeight: "bold", color: "#f5f5f5" },
+    dividerContainer: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+    line: { flex: 1, height: 1, backgroundColor: "#F1F5F9" },
+    dividerText: { marginHorizontal: 12, color: "#94A3B8", fontSize: 18 },
+    socialRow: { flexDirection: "row", justifyContent: "center", gap: 15, marginBottom: 25 },
+    socialCircle: { width: 55, height: 55, borderRadius: 25, backgroundColor: "#F8FAFC", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
+    socialIcon: { width: 45, height: 45 },
+    footer: { flexDirection: "row", justifyContent: "center" },
+    footerText: { color: "#94A3B8", fontSize: 18 },
+    signInText: { fontWeight: "bold", color: "#1E293B", fontSize: 20 },
 });
+
+export default Register;
