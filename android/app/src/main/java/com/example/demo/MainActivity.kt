@@ -1,4 +1,4 @@
-package com.aitut
+package com.example.demo
 
 import android.os.Build
 import android.os.Bundle

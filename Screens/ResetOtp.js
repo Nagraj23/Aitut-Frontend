@@ -1,16 +1,25 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ToastAndroid, Alert, SafeAreaView, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Alert, SafeAreaView, ActivityIndicator } from "react-native";
 import { AUTH_URL } from "../Constants/Api";
-import OtpInput from "./OtpInput"; // Adjust path
+import OtpInput from "./OtpInput";
 
-const VerifyAccount = ({ navigation, route }) => {
+const ResetSecurity = ({ navigation, route }) => {
     const { email } = route.params;
     const [otp, setOtp] = useState(["", "", "", ""]);
     const [loading, setLoading] = useState(false);
 
     const handleVerify = async () => {
         const otpCode = otp.join("");
-        if (otpCode.length < 4) return Alert.alert("Error", "Enter 4-digit code");
+
+        // Log 1: Check what the state looks like before sending
+        console.log("--- Frontend Request Start ---");
+        console.log("Target URL:", `${AUTH_URL}/verify-otp`);
+        console.log("Payload:", { email, otp: otpCode, type: "RESET" });
+
+        if (otpCode.length < 4) {
+            Alert.alert("Error", "Enter 4-digit code");
+            return;
+        }
 
         setLoading(true);
         try {
@@ -42,30 +51,36 @@ const VerifyAccount = ({ navigation, route }) => {
 
             if (res.ok) {
                 navigation.navigate("ResetPassword", { email, otp: otpCode });
+                // Alert.alert("Success","verified");
             } else {
                 Alert.alert("Error", data.message || "Verification failed");
             }
         } catch (err) {
-            Alert.alert("Error", "Connection failed.");
-        } finally { setLoading(false); }
+            // Log 3: This catches the "Connection Failed" reason
+            console.error("FETCH ERROR:", err);
+            Alert.alert("Error", "Connection failed. Check Metro terminal for details.");
+        } finally {
+            setLoading(false);
+            console.log("--- Frontend Request End ---");
+        }
     };
-
     return (
         <SafeAreaView style={styles.container}>
             <Text style={styles.logoText}>AiTut</Text>
             <View style={styles.card}>
-                <Text style={styles.title}>Verify Account</Text>
-                <Text style={styles.subtitle}>Enter the code sent to {email}</Text>
+                <TouchableOpacity onPress={() => navigation.goBack()}><Text style={{fontSize: 20}}>←</Text></TouchableOpacity>
+                <Text style={styles.title}>Reset Security</Text>
+                <Text style={styles.subtitle}>Security code sent to {email}</Text>
                 <OtpInput otp={otp} setOtp={setOtp} />
-                <TouchableOpacity style={styles.button} onPress={handleVerify} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify</Text>}
+                <TouchableOpacity style={styles.button} onPress={handleVerify}>
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Continue</Text>}
                 </TouchableOpacity>
             </View>
         </SafeAreaView>
     );
 };
-// Use your existing styles he
-// re...
+// Use your existing styles here...
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -121,11 +136,11 @@ const styles = StyleSheet.create({
         color: '#333'
     },
     button: {
-        backgroundColor: "#1E90FF", // The blue action button
+        backgroundColor: "#4f46e5", // The blue action button
         paddingVertical: 15,
         borderRadius: 20,
         marginTop: 10,
-        shadowColor: "#1E90FF",
+        shadowColor: "#4f46e5",
         shadowOffset: { width: 0, height: 5 },
         shadowOpacity: 0.3,
         elevation: 5,
@@ -137,4 +152,4 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
     },
 });
-export default VerifyAccount;
+export default ResetSecurity;

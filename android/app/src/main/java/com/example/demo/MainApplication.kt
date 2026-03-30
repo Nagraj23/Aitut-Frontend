@@ -1,4 +1,4 @@
-package com.aitut
+package com.example.demo
 
 import android.app.Application
 import android.content.res.Configuration
