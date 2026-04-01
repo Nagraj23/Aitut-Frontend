@@ -17,6 +17,8 @@ import ResetPassword from "./Screens/ResetPassword";
 import AppTabs from './Screens/AppTabs';
 import ProfileScreen from "./Screens/Profile";
 import EditProfileScreen from "./Screens/ProfileUpdate";
+import basicEdit from "./Screens/BasicEdit";
+import EditLEarning from "./Screens/EditLEarning";
 
 const Stack = createNativeStackNavigator();
 
@@ -57,6 +59,8 @@ const AppNavigator = () => {
 
                     <Stack.Screen name="Main" component={AppTabs} />
                     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+                        <Stack.Screen name="EditLearning" component={EditLEarning} />
+                    <Stack.Screen name="EditBasicInfo" component={basicEdit} />
                     </>
                 )}
             </Stack.Navigator>
