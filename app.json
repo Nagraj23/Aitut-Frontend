@@ -8,7 +8,9 @@
     ],
     "android": {
       "package": "com.example.demo",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "pan"
     }
   }
 }
+

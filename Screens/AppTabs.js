@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/Ionicons';
+import ChatScreen from './ChatScreen'; // add this import
 
 // Import your screens (we'll define Home below)
 import HomeScreen from './Home';
@@ -32,6 +33,8 @@ const AppTabs = () => {
             <Tab.Screen name="Home" component={HomeScreen} />
             {/*<Tab.Screen name="Test" component={TestScreen} />*/}
             {/*<Tab.Screen name="AI-Tut" component={MentorScreen} />*/}
+           
+            <Tab.Screen name="AI-Tut" component={ChatScreen} />
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>
     );
