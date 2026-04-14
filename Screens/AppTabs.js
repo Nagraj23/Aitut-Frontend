@@ -6,7 +6,9 @@ import ChatScreen from './ChatScreen'; // add this import
 // Import your screens (we'll define Home below)
 import HomeScreen from './Home';
 // import MentorScreen from './screens/MentorScreen';
-// import TestScreen from './screens/TestScreen';
+// // import TestScreen from './screens/TestScreen';
+// import RoadmapScreen from './Screens/RoadmapScreen';
+// import TeachScreen from './Screens/TeachScreen';
 import ProfileScreen from './Profile';
 
 const Tab = createBottomTabNavigator();

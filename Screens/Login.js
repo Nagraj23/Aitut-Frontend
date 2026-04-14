@@ -29,10 +29,10 @@ export default function Login({ navigation }) {
     const { signIn } = useContext(AuthContext);
 
     // Initial Configuration
-    GoogleSignin.configure({
-        webClientId: '511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com',
-        offlineAccess: true,
-    });
+    // GoogleSignin.configure({
+    //     webClientId: '511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com',
+    //     offlineAccess: true,
+    // });
 
     // Helper to process successful login
     const onLoginSuccess = async (data) => {
