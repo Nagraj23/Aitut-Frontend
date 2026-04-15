@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,45 +9,32 @@ const HomeScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(true);
     const [currentRoadmap, setCurrentRoadmap] = useState(null);
 
-    // --- 1. Fetch Dynamic Roadmap Data ---
     const fetchActiveRoadmap = async () => {
         try {
-            const details = await AsyncStorage.getItem('userDetails');
-            if (!details) return;
-            const user = JSON.parse(details);
-
-            // Fetch the most recent roadmap for this user from Django
-            const response = await axios.get(`http://YOUR_DJANGO_IP:8000/api/roadmaps/latest/${user.id}/`);
-
+            // Fetching just for the dashboard preview
+            const response = await axios.get(`http://10.139.12.44:8001/api/roadmaps/latest/550e8400-e29b-41d4-a716-446655440000`);
             if (response.data) {
                 setCurrentRoadmap(response.data);
             }
         } catch (error) {
-            console.log("No active roadmap found or server error");
+            console.log("Dashboard fetch failed: Roadmap detail will handle main fetch.");
             setCurrentRoadmap(null);
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => {
-        fetchActiveRoadmap();
-    }, []);
+    // useEffect(() => {
+    //     fetchActiveRoadmap();
+    // }, []);
 
-    const handleContinuePress = () => {
-        if (!isComplete) {
-            Alert.alert("Profile Incomplete", "Please sync your profile in settings first.");
-        } else if (!currentRoadmap) {
-            navigation.navigate('EditLearningInfo'); // Redirect to create one
-        } else {
-            // Navigate to assessment logic
-            console.log("Starting Assessment...");
-        }
+    // Simplified: Direct navigation without validation
+    const handleNavigation = () => {
+        navigation.navigate('Raodmap');
     };
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Header */}
             <View style={styles.header}>
                 <View>
                     <Text style={styles.welcomeText}>Hello, Developer! 👋</Text>
@@ -58,45 +45,30 @@ const HomeScreen = ({ navigation }) => {
                 </View>
             </View>
 
-            {/* Dynamic Top Card */}
-            {loading ? (
-                <View style={[styles.card, { justifyContent: 'center' }]}>
-                    <ActivityIndicator color="#FFF" />
-                </View>
-            ) : currentRoadmap ? (
+            {/*{loading ? (*/}
+            {/*    <View style={[styles.card, { justifyContent: 'center' }]}>*/}
+            {/*        <ActivityIndicator color="#FFF" />*/}
+            {/*    </View>*/}
+            {/*) : (*/}
                 <TouchableOpacity
                     activeOpacity={0.9}
                     style={styles.card}
-                    onPress={() => navigation.navigate('RoadmapDetail', { roadmap: currentRoadmap })}
+                    onPress={handleNavigation}
                 >
                     <Text style={styles.cardLabel}>CURRENT LEARNING</Text>
-                    <Text style={styles.cardTitle}>{currentRoadmap.target_course || "Active Roadmap"}</Text>
+                    <Text style={styles.cardTitle}>{currentRoadmap?.target_course || "Resume Learning"}</Text>
 
-                    {/* Dynamic Progress logic - assumes backend provides progress % */}
-                    <Text style={styles.dayText}>Progress: {currentRoadmap.progress || 0}% Complete</Text>
+                    <Text style={styles.dayText}>Progress: {currentRoadmap?.progress || 0}% Complete</Text>
                     <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, { width: `${currentRoadmap.progress || 0}%` }]} />
+                        <View style={[styles.progressBarFill, { width: `${currentRoadmap?.progress || 0}%` }]} />
                     </View>
 
-                    <TouchableOpacity style={styles.button} onPress={handleContinuePress}>
-                        <Text style={styles.buttonText}>Continue Learning</Text>
-                    </TouchableOpacity>
+                    <View style={styles.button}>
+                        <Text style={styles.buttonText}>Open Roadmap</Text>
+                    </View>
                 </TouchableOpacity>
-            ) : (
-                /* No Data State */
-                <View style={[styles.card, { backgroundColor: '#64748B' }]}>
-                    <Text style={styles.cardTitle}>No Active Roadmap</Text>
-                    <Text style={styles.dayText}>Start your AI-powered learning journey today.</Text>
-                    <TouchableOpacity
-                        style={styles.button}
-                        onPress={() => navigation.navigate('EditLearningInfo')}
-                    >
-                        <Text style={[styles.buttonText, { color: '#64748B' }]}>Create Roadmap</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
 
-            {/* Stats Section (Keep as is) */}
+
             <Text style={styles.sectionHeader}>Your Progress</Text>
             <View style={styles.statsRow}>
                 <View style={styles.statBox}>
@@ -119,7 +91,6 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={styles.learningItem}>• Solved 3 Linked List problems.</Text>
                 </View>
             </View>
-
             <View style={{ height: 40 }} />
         </ScrollView>
     );

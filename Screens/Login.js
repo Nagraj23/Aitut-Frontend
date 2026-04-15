@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AUTH_URL } from "../Constants/Api";
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+
 
 // 1. Import the AuthContext
 import { AuthContext } from "../context/AuthContext";
@@ -29,10 +29,7 @@ export default function Login({ navigation }) {
     const { signIn } = useContext(AuthContext);
 
     // Initial Configuration
-    GoogleSignin.configure({
-        webClientId: '511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com',
-        offlineAccess: true,
-    });
+
 
     // Helper to process successful login
     const onLoginSuccess = async (data) => {
@@ -74,43 +71,6 @@ export default function Login({ navigation }) {
 
         } catch (error) {
             console.error("🚨 [Login] Storage Error:", error);
-        }
-    };
-
-    // --- SOCIAL LOGIN LOGIC ---
-    const handleGoogleLogin = async () => {
-        setLoading(true);
-        try {
-            console.log("🟡 [Login]: Starting Google Login...");
-            await GoogleSignin.hasPlayServices();
-            const userInfo = await GoogleSignin.signIn();
-            const idToken = userInfo.data ? userInfo.data.idToken : userInfo.idToken;
-
-            if (!idToken) throw new Error("Google did not return an ID Token.");
-
-            console.log("✅ [Login]: Google Token received, hitting backend...");
-
-            const response = await fetch(`${AUTH_URL}/google-login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token: idToken }),
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-                await onLoginSuccess(data);
-            } else {
-                Alert.alert("Google Login Failed", data.message || "Backend rejected token");
-            }
-        } catch (error) {
-            if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-                ToastAndroid.show("Sign-in cancelled", ToastAndroid.SHORT);
-            } else {
-                console.error("🚨 [Login]: Google Auth Error:", error);
-                Alert.alert("Auth Error", "Could not complete Google Sign-In");
-            }
-        } finally {
-            setLoading(false);
         }
     };
 

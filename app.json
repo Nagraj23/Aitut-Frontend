@@ -3,12 +3,9 @@
     "name": "aitut",
     "slug": "aitut",
     "version": "1.0.0",
-    "plugins": [
-      "@react-native-google-signin/google-signin"
-    ],
+    "plugins": [ ],
     "android": {
-      "package": "com.example.demo",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.example.demo"
     }
   }
 }

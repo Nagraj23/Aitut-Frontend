@@ -19,6 +19,7 @@ import ProfileScreen from "./Screens/Profile";
 import EditProfileScreen from "./Screens/ProfileUpdate";
 import basicEdit from "./Screens/BasicEdit";
 import EditLEarning from "./Screens/EditLEarning";
+import Roadmap from "./Screens/Roadmap";
 
 const Stack = createNativeStackNavigator();
 
@@ -61,6 +62,7 @@ const AppNavigator = () => {
                     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
                         <Stack.Screen name="EditLearning" component={EditLEarning} />
                     <Stack.Screen name="EditBasicInfo" component={basicEdit} />
+                        <Stack.Screen name="Raodmap" component={Roadmap} />
                     </>
                 )}
             </Stack.Navigator>
