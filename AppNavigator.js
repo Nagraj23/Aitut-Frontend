@@ -3,10 +3,10 @@ import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-
+// Context
 import { AuthContext } from './context/AuthContext';
 
-
+// Screens
 import Landing from "./Screens/Landing";
 import Register from "./Screens/Register";
 import Login from "./Screens/Login";
@@ -17,6 +17,14 @@ import ResetPassword from "./Screens/ResetPassword";
 import AppTabs from './Screens/AppTabs';
 import ProfileScreen from "./Screens/Profile";
 import EditProfileScreen from "./Screens/ProfileUpdate";
+import basicEdit from "./Screens/BasicEdit";
+// import EditLearning from "./Screens/EditLearningInfo";
+import EditLearningInfo from "./Screens/EditLearningInfo";
+import RoadmapScreen from './Screens/RoadmapScreen';
+import TeachScreen from './Screens/TeachScreen';
+import DiagnosticTest from './Screens/DiagnosticTest';
+import TestResult from './Screens/TestResult';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -51,12 +59,21 @@ const AppNavigator = () => {
                         <Stack.Screen name="Email" component={Email} />
                         <Stack.Screen name="ResetOtp" component={ResetSecurity} />
                         <Stack.Screen name="ResetPassword" component={ResetPassword} />
+                        {/* <Stack.Screen name="Roadmap" component={RoadmapScreen} />
+                        <Stack.Screen name="Teach" component={TeachScreen} /> */}
                     </>
                 ) : (
                     <>
 
                     <Stack.Screen name="Main" component={AppTabs} />
                     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+                    <Stack.Screen name="EditLearningInfo" component={EditLearningInfo} />
+                    <Stack.Screen name="EditBasicInfo" component={basicEdit} />
+
+                    <Stack.Screen name="DiagnosticTest" component={DiagnosticTest} />
+                    <Stack.Screen name="Roadmap" component={RoadmapScreen} />
+                    <Stack.Screen name="Teach" component={TeachScreen} />
+                    <Stack.Screen name="TestResult" component={TestResult} />
                     </>
                 )}
             </Stack.Navigator>

@@ -38,6 +38,7 @@ const EditProfileScreen = ({ navigation }) => {
             const details = await AsyncStorage.getItem('userDetails');
             if (details) {
                 const user = JSON.parse(details);
+                console.log(user,"profile update");
                 setCurrentUserId(user.id);
 
                 setFormData({

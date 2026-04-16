@@ -29,10 +29,10 @@ export default function Login({ navigation }) {
     const { signIn } = useContext(AuthContext);
 
     // Initial Configuration
-    GoogleSignin.configure({
-        webClientId: '511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com',
-        offlineAccess: true,
-    });
+    // GoogleSignin.configure({
+    //     webClientId: '511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com',
+    //     offlineAccess: true,
+    // });
 
     // Helper to process successful login
     const onLoginSuccess = async (data) => {
@@ -284,6 +284,6 @@ const styles = StyleSheet.create({
     socialCircle: { width: 50, height: 50, borderRadius: 30, backgroundColor: "#F8FAFC", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
     socialIcon: { width: 35, height: 35, resizeMode: "contain" },
     footer: { flexDirection: "row", justifyContent: "center" },
-    footerText: { color: "#94A3B8", fontSize: 20 },
+    footerText: { color: "#94A3B8", fontSize: 20 , marginBottom: 30 },
     signUpText: { fontWeight: "bold", color: "#1E293B", fontSize: 20 },
 });

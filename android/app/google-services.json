@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "511625866788",
+    "project_id": "aitut-488814",
+    "storage_bucket": "aitut-488814.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:511625866788:android:dc8bc0ca2bf1411f2eb2b1",
+        "android_client_info": {
+          "package_name": "com.example.demo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASlvjwzlsanu6FDq9qGO66_EqfCUa60s4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "511625866788-i1cj7pgim65c9splvnd2chmptr1mrath.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

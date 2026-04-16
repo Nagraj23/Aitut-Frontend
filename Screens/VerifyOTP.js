@@ -49,6 +49,52 @@ const VerifyAccount = ({ navigation, route }) => {
             Alert.alert("Error", "Connection failed.");
         } finally { setLoading(false); }
     };
+// const VerifyAccount = ({ navigation, route }) => {
+//     const { email, type } = route.params; // ← get type from params
+
+//     const handleVerify = async () => {
+//         const otpCode = otp.join("");
+//         if (otpCode.length < 4) return Alert.alert("Error", "Enter 4-digit code");
+
+//         setLoading(true);
+//         try {
+//             const res = await fetch(`${AUTH_URL}/verify-otp`, {
+//                 method: "POST",
+//                 headers: { "Content-Type": "application/json" },
+//                 body: JSON.stringify({
+//                     email: email,
+//                     otp: otpCode,
+//                     type: type  // ← use the type from params, not hardcoded "RESET"
+//                 }),
+//             });
+
+//             const contentType = res.headers.get("content-type");
+//             let data;
+//             if (contentType && contentType.includes("application/json")) {
+//                 data = await res.json();
+//             } else {
+//                 const textData = await res.text();
+//                 data = { message: textData };
+//             }
+
+//             if (res.ok) {
+//                 // ← Route based on type
+//                 if (type === "ACCOUNT") {
+//                     navigation.navigate("Login"); // Registration complete → go to login
+//                 } else {
+//                     navigation.navigate("ResetPassword", { email, otp: otpCode }); // Reset flow
+//                 }
+//             } else {
+//                 Alert.alert("Error", data.message || "Verification failed");
+//             }
+//         } catch (err) {
+//             Alert.alert("Error", "Connection failed.");
+//         } finally {
+//             setLoading(false);
+//         }
+//     };
+//     // ... rest of component
+// // };
 
     return (
         <SafeAreaView style={styles.container}>
