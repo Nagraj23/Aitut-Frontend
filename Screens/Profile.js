@@ -18,6 +18,7 @@ const ProfileScreen = ({ navigation }) => {
 
     const loadUserData = async () => {
         const details = await AsyncStorage.getItem('userDetails');
+        console.log(details,"profile");
         if (details) setUser(JSON.parse(details));
     };
 
@@ -34,7 +35,7 @@ const ProfileScreen = ({ navigation }) => {
                 {/* Visual indicator of profile completion */}
                 <View style={styles.badge}>
                     <Text style={styles.badgeText}>
-                        {user?.isComplete ? "✅ Profile Verified" : "⚠️ Complete Profile"}
+                        {user?.isComplete ? "✅ Profile Verified" : "⚠️ Incomplete Profile"}
                     </Text>
                 </View>
             </View>
@@ -52,7 +53,7 @@ const ProfileScreen = ({ navigation }) => {
                         label="Academic Info"
                         subLabel="College, Degree & Year"
                         icon="🎓"
-                        onPress={() => navigation.navigate('EditLearning')}
+                        onPress={() => navigation.navigate('EditLearningInfo')}
                     />
                 </View>
                 <View style={styles.row}>
@@ -66,7 +67,7 @@ const ProfileScreen = ({ navigation }) => {
                         label="My Roadmap"
                         subLabel="View active paths"
                         icon="🗺️"
-                        onPress={() => navigation.navigate('Roadmaps')}
+                        onPress={() => navigation.navigate('Roadmap')}
                     />
                 </View>
             </View>

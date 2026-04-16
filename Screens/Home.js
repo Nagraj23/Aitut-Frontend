@@ -24,7 +24,7 @@ const HomeScreen = ({ navigation }) => {
                 setCurrentRoadmap(response.data);
             }
         } catch (error) {
-            console.log("No active roadmap found");
+            // console.log("No active roadmap found");
             setCurrentRoadmap(null);
         } finally {
             setLoading(false);
@@ -104,7 +104,8 @@ const HomeScreen = ({ navigation }) => {
             ) : (
                 // ✅ NO ROADMAP — prompt to create
                 <View style={[styles.card, { backgroundColor: '#64748B' }]}>
-                    <Text style={styles.cardTitle}>No Active Roadmap</Text>
+                    <Text style={styles.cardTitle}>No Active Roadmap </Text>
+                    <Text style={styles.cardTitle1}>Tests are Incomplete </Text>
                     <Text style={styles.dayText}>
                         Start your AI-powered learning journey today.
                     </Text>
@@ -163,6 +164,7 @@ const styles = StyleSheet.create({
     activeBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     activeBadgeText: { color: '#4ADE80', fontSize: 10, fontWeight: 'bold' },
     cardTitle: { color: '#FFF', fontSize: 22, fontWeight: 'bold', marginTop: 5 },
+    cardTitle1: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginTop: 3 },
     cardOverview: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 3 },
     dayText: { color: '#E0E0E0', marginTop: 15, marginBottom: 8, fontSize: 14 },
     progressBarBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 4 },

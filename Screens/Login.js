@@ -284,6 +284,6 @@ const styles = StyleSheet.create({
     socialCircle: { width: 50, height: 50, borderRadius: 30, backgroundColor: "#F8FAFC", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
     socialIcon: { width: 35, height: 35, resizeMode: "contain" },
     footer: { flexDirection: "row", justifyContent: "center" },
-    footerText: { color: "#94A3B8", fontSize: 20 },
+    footerText: { color: "#94A3B8", fontSize: 20 , marginBottom: 30 },
     signUpText: { fontWeight: "bold", color: "#1E293B", fontSize: 20 },
 });
