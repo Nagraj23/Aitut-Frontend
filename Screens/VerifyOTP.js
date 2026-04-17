@@ -4,7 +4,7 @@ import { AUTH_URL } from "../Constants/Api";
 import OtpInput from "./OtpInput"; // Adjust path
 
 const VerifyAccount = ({ navigation, route }) => {
-    const { email } = route.params;
+    const { email,type } = route.params;
     const [otp, setOtp] = useState(["", "", "", ""]);
     const [loading, setLoading] = useState(false);
 
@@ -20,7 +20,7 @@ const VerifyAccount = ({ navigation, route }) => {
                 body: JSON.stringify({
                     email: email,
                     otp: otpCode,
-                    type: "RESET"
+                    type:type
                 }),
             });
 
@@ -41,7 +41,7 @@ const VerifyAccount = ({ navigation, route }) => {
             // --- FIX ENDS HERE ---
 
             if (res.ok) {
-                navigation.navigate("ResetPassword", { email, otp: otpCode });
+                navigation.navigate("Login");
             } else {
                 Alert.alert("Error", data.message || "Verification failed");
             }
