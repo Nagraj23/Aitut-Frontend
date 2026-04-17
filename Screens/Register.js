@@ -8,29 +8,32 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    ScrollView,
     Platform,
     ActivityIndicator,
     KeyboardAvoidingView,
     Image,
+    ScrollView,
 } from "react-native";
-// import axios from ""
+
 import Feather from "react-native-vector-icons/Feather";
 import { useNavigation } from "@react-navigation/native";
-import {AUTH_URL} from "../Constants/Api";
+import { AUTH_URL } from "../Constants/Api";
 import axios from "axios";
 
-const ROLES = ['STUDENT', 'TEACHER', 'ADMIN'];  // Backend enum
+const ROLES = ["STUDENT", "TEACHER", "TPO"]; // ❌ removed ADMIN (security)
 
-const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+function validateEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 const Register = () => {
     const [formData, setFormData] = useState({
         name: "",
         email: "",
         password: "",
-        role: 'STUDENT',
+        role: "STUDENT",
     });
+
     const navigation = useNavigation();
     const [errors, setErrors] = useState({});
     const [isLoading, setIsLoading] = useState(false);
@@ -45,25 +48,33 @@ const Register = () => {
         let e = {};
         if (!formData.name) e.name = "Name required";
         if (!validateEmail(formData.email)) e.email = "Invalid email";
-        if (formData.password.length < 6) e.password = "Min 6 characters";
+        if (formData.password.length < 6)
+            e.password = "Min 6 characters";
         setErrors(e);
         return Object.keys(e).length === 0;
     };
 
     const handleRegister = async () => {
         if (!validateForm() || !agree) {
-            if (!agree) Alert.alert("Terms", "Please agree to Terms & Conditions");
+            if (!agree)
+                Alert.alert(
+                    "Terms",
+                    "Please agree to Terms & Conditions"
+                );
             return;
         }
 
         setIsLoading(true);
         try {
             console.log("📤 Payload:", formData);
-            const res = await axios.post(`${AUTH_URL}/register`, formData);
 
-            console.log("✅ Success:", res.data);
-
-            const message = res.data;  // "Registration successful! Check email for verification OTP."
+            const res = await axios.post(
+                ` ${AUTH_URL}/register ` ,
+                formData
+            );
+            
+            
+            const message = res.data;
 
             if (Platform.OS === "android") {
                 ToastAndroid.show(message, ToastAndroid.LONG);
@@ -71,133 +82,180 @@ const Register = () => {
                 Alert.alert("Success", message);
             }
 
-            // 🔥 CRITICAL: Navigate to OTP Verify screen with email
-            navigation.navigate("VerifyOTP", { email: formData.email, type: "ACCOUNT" });
-
+            navigation.navigate("VerifyOTP", {
+                email: formData.email,
+                type: "ACCOUNT",
+            });
         } catch (err) {
-            console.error("❌ Error:", err.response?.data || err.message);
-            const errorMsg = err.response?.data || "Registration failed";
-            Alert.alert("Error", errorMsg.includes('Email already registered') ?
-                "Email already exists. Try login or different email." : errorMsg);
+            const errorMsg =
+                err.response?.data || "Registration failed";
+            Alert.alert("Error", errorMsg);
         } finally {
-            setIsLoading(false);  // 🔥 REMOVED duplicate timeout
+            setIsLoading(false);
         }
     };
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+            <StatusBar
+                barStyle="light-content"
+                translucent
+                backgroundColor="transparent"
+            />
 
-            {/* 🎨 Top Purple Header */}
+            {/* Header */}
             <View style={styles.headerBackground}>
                 <Text style={styles.brandName}>AiTut</Text>
-                <View style={styles.logoContainer}>
-                    {/*<Image*/}
-                    {/*    source={require("../assets/logo.png")} // Add your logo here*/}
-                    {/*    style={styles.logo}*/}
-                    {/*    resizeMode="contain"*/}
-                    {/*/>*/}
-                </View>
             </View>
 
-            {/* ⚪ White Form Card */}
+            {/* Form */}
             <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior={
+                    Platform.OS === "ios" ? "padding" : "height"
+                }
                 style={styles.formCard}
             >
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                    <Text style={styles.welcomeTitle}>Register</Text>
-                    <Text style={styles.welcomeSubtitle}>Create new account for better service</Text>
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    <Text style={styles.welcomeTitle}>
+                        Register
+                    </Text>
 
-                    {/* Name Input */}
+                    {/* Name */}
                     <View style={styles.inputWrapper}>
                         <Text style={styles.label}>Name</Text>
-                        <View style={[styles.inputContainer, errors.name && styles.errorBorder]}>
-                            <Feather name="user" size={18} color="#CBD5E1" style={styles.inputIcon} />
+                        <View
+                            style={[
+                                styles.inputContainer,
+                                errors.name && styles.errorBorder,
+                            ]}
+                        >
+                            <Feather
+                                name="user"
+                                size={18}
+                                color="#CBD5E1"
+                            />
                             <TextInput
                                 style={styles.input}
-                                placeholder="Johan Mandela"
-                                placeholderTextColor="#CBD5E1"
+                                placeholder="Your Name"
                                 value={formData.name}
-                                onChangeText={(v) => handleChange("name", v)}
+                                onChangeText={(v) =>
+                                    handleChange("name", v)
+                                }
                             />
                         </View>
                     </View>
 
-                    {/* Email Input */}
+                    {/* Email */}
                     <View style={styles.inputWrapper}>
                         <Text style={styles.label}>Email</Text>
-                        <View style={[styles.inputContainer, errors.email && styles.errorBorder]}>
-                            <Feather name="mail" size={18} color="#CBD5E1" style={styles.inputIcon} />
+                        <View
+                            style={[
+                                styles.inputContainer,
+                                errors.email &&
+                                    styles.errorBorder,
+                            ]}
+                        >
+                            <Feather
+                                name="mail"
+                                size={18}
+                                color="#CBD5E1"
+                            />
                             <TextInput
                                 style={styles.input}
-                                placeholder="brittnilonda5487@gmail.com"
-                                placeholderTextColor="#CBD5E1"
+                                placeholder="email@gmail.com"
                                 keyboardType="email-address"
                                 value={formData.email}
-                                onChangeText={(v) => handleChange("email", v)}
+                                onChangeText={(v) =>
+                                    handleChange("email", v)
+                                }
                             />
                         </View>
                     </View>
 
-                    {/* Password Input */}
+                    {/* Password */}
                     <View style={styles.inputWrapper}>
                         <Text style={styles.label}>Password</Text>
-                        <View style={[styles.inputContainer, errors.password && styles.errorBorder]}>
-                            <Feather name="lock" size={18} color="#CBD5E1" style={styles.inputIcon} />
+                        <View
+                            style={[
+                                styles.inputContainer,
+                                errors.password &&
+                                    styles.errorBorder,
+                            ]}
+                        >
+                            <Feather
+                                name="lock"
+                                size={18}
+                                color="#CBD5E1"
+                            />
                             <TextInput
                                 style={styles.input}
                                 placeholder="password"
-                                placeholderTextColor="#CBD5E1"
                                 secureTextEntry
                                 value={formData.password}
-                                onChangeText={(v) => handleChange("password", v)}
+                                onChangeText={(v) =>
+                                    handleChange("password", v)
+                                }
                             />
                         </View>
                     </View>
 
-                    {/* Terms & Conditions */}
-                    <TouchableOpacity
-                        style={styles.termsRow}
-                        onPress={() => setAgree(!agree)}
-                    >
-                    </TouchableOpacity>
+                    {/* 🔥 ROLE SELECTOR */}
+                    <View style={styles.inputWrapper}>
+                        <Text style={styles.label}>
+                            Select Role
+                        </Text>
 
-                    {/* Sign Up Button */}
+                        <View style={styles.roleContainer}>
+                            {ROLES.map((role) => (
+                                <TouchableOpacity
+                                    key={role}
+                                    style={[
+                                        styles.roleButton,
+                                        formData.role === role &&
+                                            styles.roleActive,
+                                    ]}
+                                    onPress={() =>
+                                        handleChange("role", role)
+                                    }
+                                >
+                                    <Text
+                                        style={[
+                                            styles.roleText,
+                                            formData.role ===
+                                                role &&
+                                                styles.roleTextActive,
+                                        ]}
+                                    >
+                                        {role}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    {/* Button */}
                     <TouchableOpacity
-                        style={[styles.signUpButton, isLoading && { opacity: 0.7 }]}
+                        style={styles.signUpButton}
                         onPress={handleRegister}
                         disabled={isLoading}
                     >
                         {isLoading ? (
-                            <ActivityIndicator color="#1E293B" />
+                            <ActivityIndicator
+                                color="#fff"
+                            />
                         ) : (
-                            <Text style={styles.signUpButtonText}>Sign up</Text>
+                            <Text
+                                style={
+                                    styles.signUpButtonText
+                                }
+                            >
+                                Sign Up
+                            </Text>
                         )}
                     </TouchableOpacity>
-
-                    <View style={styles.dividerContainer}>
-                        <View style={styles.line} />
-                        <Text style={styles.dividerText}>Or Sign up with</Text>
-                        <View style={styles.line} />
-                    </View>
-
-                    {/* Social Circles */}
-                    <View style={styles.socialRow}>
-                        <TouchableOpacity style={styles.socialCircle}>
-                            <Image source={require("../assets/google.png")} style={styles.socialIcon} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.socialCircle}>
-                            <Image source={require("../assets/git.png")} style={styles.socialIcon} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.footer}>
-                        <Text style={styles.footerText}>Already have an account? </Text>
-                        <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-                            <Text style={styles.signInText}>Sign in</Text>
-                        </TouchableOpacity>
-                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
         </View>
@@ -206,57 +264,104 @@ const Register = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#9788FB" },
+
     headerBackground: {
         height: "25%",
-        // justifyContent: "center",
         alignItems: "center",
         paddingTop: 50,
     },
-    brandName: { color: "#fff", fontSize: 36, fontWeight: "bold", marginBottom: 10 },
-    logo: { width: 70, height: 70 },
+
+    brandName: {
+        color: "#fff",
+        fontSize: 36,
+        fontWeight: "bold",
+    },
+
     formCard: {
         flex: 1,
         backgroundColor: "#fff",
         borderTopLeftRadius: 40,
         borderTopRightRadius: 40,
-        marginTop: -30,
-        paddingHorizontal: 25,
+        padding: 20,
     },
-    scrollContent: { paddingTop: 20, paddingBottom: 40 },
-    welcomeTitle: { fontSize: 34, fontWeight: "bold", textAlign: "center", color: "#1E293B" },
-    welcomeSubtitle: { fontSize: 15, color: "#ADADAD", textAlign: "center", marginTop: 8, marginBottom: 25 },
-    inputWrapper: { marginBottom: 18 },
-    label: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
+
+    scrollContent: { paddingBottom: 40 },
+
+    welcomeTitle: {
+        fontSize: 28,
+        fontWeight: "bold",
+        textAlign: "center",
+        marginBottom: 20,
+    },
+
+    inputWrapper: { marginBottom: 15 },
+
+    label: {
+        fontWeight: "bold",
+        marginBottom: 5,
+    },
+
     inputContainer: {
         flexDirection: "row",
         alignItems: "center",
         borderWidth: 1,
         borderColor: "#F1F5F9",
-        borderRadius: 25,
-        backgroundColor: "#fff",
-        height: 50,
-        paddingHorizontal: 15,
-        elevation: 1,
+        borderRadius: 10,
+        padding: 10,
     },
-    inputIcon: { marginRight: 10 },
-    input: { flex: 1, fontSize: 18, color: "#1E293B" },
-    errorBorder: { borderColor: "#ef233c" },
-    termsRow: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
-    checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: "#CBD5E1", marginRight: 10, justifyContent: "center", alignItems: "center" },
-    checkboxActive: { backgroundColor: "#9788FB", borderColor: "#9788FB" },
-    termsText: { fontSize: 12, color: "#64748B" },
-    boldText: { fontWeight: "bold", color: "#1E293B" },
-    signUpButton: { backgroundColor: "#4f46e5", height: 55, borderRadius: 30, justifyContent: "center", alignItems: "center", marginBottom: 20 },
-    signUpButtonText: { fontSize: 26, fontWeight: "bold", color: "#f5f5f5" },
-    dividerContainer: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
-    line: { flex: 1, height: 1, backgroundColor: "#F1F5F9" },
-    dividerText: { marginHorizontal: 12, color: "#94A3B8", fontSize: 18 },
-    socialRow: { flexDirection: "row", justifyContent: "center", gap: 15, marginBottom: 25 },
-    socialCircle: { width: 55, height: 55, borderRadius: 25, backgroundColor: "#F8FAFC", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
-    socialIcon: { width: 45, height: 45 },
-    footer: { flexDirection: "row", justifyContent: "center" },
-    footerText: { color: "#94A3B8", fontSize: 18 },
-    signInText: { fontWeight: "bold", color: "#1E293B", fontSize: 20 },
+
+    input: {
+        flex: 1,
+        marginLeft: 10,
+    },
+
+    errorBorder: {
+        borderColor: "red",
+    },
+
+    /* 🔥 ROLE STYLES */
+    roleContainer: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+    },
+
+    roleButton: {
+        flex: 1,
+        padding: 10,
+        borderWidth: 1,
+        borderRadius: 10,
+        marginHorizontal: 5,
+        alignItems: "center",
+        borderColor: "#ccc",
+    },
+
+    roleActive: {
+        backgroundColor: "#4f46e5",
+        borderColor: "#4f46e5",
+    },
+
+    roleText: {
+        color: "#333",
+    },
+
+    roleTextActive: {
+        color: "#fff",
+        fontWeight: "bold",
+    },
+
+    signUpButton: {
+        backgroundColor: "#4f46e5",
+        padding: 15,
+        borderRadius: 10,
+        alignItems: "center",
+        marginTop: 20,
+    },
+
+    signUpButtonText: {
+        color: "#fff",
+        fontSize: 18,
+        fontWeight: "bold",
+    },
 });
 
 export default Register;

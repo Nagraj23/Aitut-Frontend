@@ -14,7 +14,7 @@ const ResetSecurity = ({ navigation, route }) => {
         // Log 1: Check what the state looks like before sending
         console.log("--- Frontend Request Start ---");
         console.log("Target URL:", `${AUTH_URL}/verify-otp`);
-        console.log("Payload:", { email, otp: otpCode, type: "RESET" });
+        console.log("Payload:", { email, otp: otpCode, type: "ACCOUNT" });
 
         if (otpCode.length < 4) {
             Alert.alert("Error", "Enter 4-digit code");
