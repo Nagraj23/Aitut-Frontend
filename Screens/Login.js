@@ -67,7 +67,13 @@ export default function Login({ navigation }) {
 
             // TRIGGER THE NAVIGATOR SWITCH
             // We pass the token and the 'complete' status to our AuthContext
-            await signIn(data);
+            await signIn({
+                accessToken: token,
+                complete: isComplete,
+                role: data.role,
+                id: data.id,
+                name: data.name
+            });
 
         } catch (error) {
             console.error("🚨 [Login] Storage Error:", error);
@@ -195,15 +201,6 @@ export default function Login({ navigation }) {
                         <View style={styles.line} />
                     </View>
 
-                    {/* Social Row */}
-                    <View style={styles.socialRow}>
-                        <TouchableOpacity style={styles.socialCircle} onPress={handleGoogleLogin} disabled={loading}>
-                            <Image source={require("../assets/google.png")} style={styles.socialIcon} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.socialCircle} onPress={handleGithubLogin} disabled={loading}>
-                            <Image source={require("../assets/git.png")} style={styles.socialIcon} />
-                        </TouchableOpacity>
-                    </View>
 
                     <View style={styles.footer}>
                         <Text style={styles.footerText}>Don't have an account? </Text>

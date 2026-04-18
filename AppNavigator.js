@@ -15,21 +15,35 @@ import Email from "./Screens/Email";
 import ResetSecurity from "./Screens/ResetOtp";
 import ResetPassword from "./Screens/ResetPassword";
 import AppTabs from './Screens/AppTabs';
-import ProfileScreen from "./Screens/Profile";
+
+// Common Screens
 import EditProfileScreen from "./Screens/ProfileUpdate";
 import basicEdit from "./Screens/BasicEdit";
-import EditLEarning from "./Screens/EditLEarning";
-import Roadmap from "./Screens/Roadmap";
+import EditLearningInfo from "./Screens/EditLearningInfo";
+import RoadmapScreen from './Screens/RoadmapScreen';
+import TeachScreen from './Screens/TeachScreen';
+import DiagnosticTest from './Screens/DiagnosticTest';
+import TestResult from './Screens/TestResult';
+
+// TPO Screens
+import TPOHomeScreen from "./Screens/TPO/TPOHomeScreen";
+import TPOProfile from "./Screens/TPO/TPOProfile";
+import RegisterStudentScreen from "./Screens/TPO/RegisterStudentScreen";
+import TPOProfileScreen from './Screens/TPO/TPOProfile';
+import ProfileScreen from "./Screens/Profile";
+import BranchStudentList from "./Screens/TPO/BranchWiseStudent";
 
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
-    const { isLoading, userToken } = useContext(AuthContext);
+    const { isLoading, userToken, role } = useContext(AuthContext);
 
-    // Show a loading spinner while checking AsyncStorage
+    // Normalize role check
+    const userRole = role?.toUpperCase();
+
     if (isLoading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#9788FB' }}>
+            <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#ffffff" />
             </View>
         );
@@ -37,34 +51,42 @@ const AppNavigator = () => {
 
     return (
         <NavigationContainer>
-            <Stack.Navigator
-                screenOptions={{
-                    headerShown: false,
-                    animation: 'slide_from_right'
-                }}
-            >
+            <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+
                 {userToken == null ? (
-                    // --- AUTH STACK ---
-                    // Users land here if they are not logged in
+                    /* 🔐 AUTH STACK */
                     <>
-                        <Stack.Screen name="Welcome" component={Landing} />
+                        <Stack.Screen name="Landing" component={Landing} />
                         <Stack.Screen name="Login" component={Login} />
                         <Stack.Screen name="Register" component={Register} />
                         <Stack.Screen name="VerifyOTP" component={VerifyOTP} />
-                        <Stack.Screen name="Email" component={Email} />
-                        <Stack.Screen name="ResetOtp" component={ResetSecurity} />
-                        <Stack.Screen name="ResetPassword" component={ResetPassword} />
+                        {/* ... other auth screens */}
+                    </>
+                ) : userRole === "TPO" ? (
+                    /* 🧑‍💼 TPO STACK */
+                    <>
+                        {/* 'Main' contains the Bottom Tabs (Dashboard + Profile) */}
+                        <Stack.Screen name="Main" component={AppTabs} />
+
+                        <Stack.Screen name="BranchStudents" component={BranchStudentList} />
+                        {/* Screens TPO can navigate to FROM the dashboard */}
+                        <Stack.Screen name="RegisterStudent" component={RegisterStudentScreen} />
+                        {/* Add the Branch Detail screen here so the card click works */}
+                        {/*<Stack.Screen name="BranchStudentList" component={BranchStudentListScreen} />*/}
                     </>
                 ) : (
+                    /* 👨‍🎓 STUDENT STACK */
                     <>
+                        <Stack.Screen name="Main" component={AppTabs} />
 
-                    <Stack.Screen name="Main" component={AppTabs} />
-                    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-                        <Stack.Screen name="EditLearning" component={EditLEarning} />
-                    <Stack.Screen name="EditBasicInfo" component={basicEdit} />
-                        <Stack.Screen name="Raodmap" component={Roadmap} />
+                        {/* Student specific sub-pages */}
+                        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+                        <Stack.Screen name="DiagnosticTest" component={DiagnosticTest} />
+                        <Stack.Screen name="Roadmap" component={RoadmapScreen} />
+                        <Stack.Screen name="TestResult" component={TestResult} />
                     </>
                 )}
+
             </Stack.Navigator>
         </NavigationContainer>
     );

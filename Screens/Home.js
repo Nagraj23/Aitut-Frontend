@@ -1,43 +1,61 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AI_URL } from '../Constants/Api'; // ← use your constant, not hardcoded IP
 
 const HomeScreen = ({ navigation }) => {
     const { isComplete } = useContext(AuthContext);
     const [loading, setLoading] = useState(true);
     const [currentRoadmap, setCurrentRoadmap] = useState(null);
+    const [user, setUser] = useState(null);
 
     const fetchActiveRoadmap = async () => {
         try {
-            // Fetching just for the dashboard preview
-            const response = await axios.get(`http://10.139.12.44:8001/api/roadmaps/latest/550e8400-e29b-41d4-a716-446655440000`);
-            if (response.data) {
+            const details = await AsyncStorage.getItem('userDetails');
+            if (!details) { setLoading(false); return; }
+
+            const userData = JSON.parse(details);
+            setUser(userData);
+
+            const response = await axios.get(`${AI_URL}/get-roadmap/${userData.id}`);
+            if (response.data && response.data.exists !== false) {
                 setCurrentRoadmap(response.data);
             }
         } catch (error) {
-            console.log("Dashboard fetch failed: Roadmap detail will handle main fetch.");
+            console.log("No active roadmap found");
             setCurrentRoadmap(null);
         } finally {
             setLoading(false);
         }
     };
 
-    // useEffect(() => {
-    //     fetchActiveRoadmap();
-    // }, []);
+    useEffect(() => { fetchActiveRoadmap(); }, []);
 
-    // Simplified: Direct navigation without validation
-    const handleNavigation = () => {
-        navigation.navigate('Raodmap');
+    const handleContinuePress = () => {
+        if (!isComplete) {
+            Alert.alert("Profile Incomplete", "Please complete your profile in settings first.");
+        } else if (!currentRoadmap) {
+            navigation.navigate('EditLearningInfo');
+        } else {
+            // ✅ Navigate to Roadmap screen with data
+            navigation.navigate('Roadmap', {
+                roadmapData: currentRoadmap,
+                userId: user?.id
+            });
+        }
     };
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+
+            {/* ── Header ── */}
             <View style={styles.header}>
                 <View>
-                    <Text style={styles.welcomeText}>Hello, Developer! 👋</Text>
+                    <Text style={styles.welcomeText}>
+                        Hello, {user?.name || 'Developer'}! 👋
+                    </Text>
                     <Text style={styles.subText}>Ready to ace your placements?</Text>
                 </View>
                 <View style={styles.streakBox}>
@@ -45,30 +63,63 @@ const HomeScreen = ({ navigation }) => {
                 </View>
             </View>
 
-            {/*{loading ? (*/}
-            {/*    <View style={[styles.card, { justifyContent: 'center' }]}>*/}
-            {/*        <ActivityIndicator color="#FFF" />*/}
-            {/*    </View>*/}
-            {/*) : (*/}
-                <TouchableOpacity
-                    activeOpacity={0.9}
-                    style={styles.card}
-                    onPress={handleNavigation}
-                >
-                    <Text style={styles.cardLabel}>CURRENT LEARNING</Text>
-                    <Text style={styles.cardTitle}>{currentRoadmap?.target_course || "Resume Learning"}</Text>
+            {/* ── Dynamic Roadmap Card ── */}
+            {loading ? (
+                <View style={[styles.card, { justifyContent: 'center', height: 200 }]}>
+                    <ActivityIndicator color="#FFF" size="large" />
+                </View>
+            ) : currentRoadmap ? (
+                // ✅ HAS ROADMAP — show progress card
+                <TouchableOpacity activeOpacity={0.9} style={styles.card} onPress={handleContinuePress}>
+                    <View style={styles.cardHeader}>
+                        <Text style={styles.cardLabel}>CURRENT LEARNING</Text>
+                        <View style={styles.activeBadge}>
+                            <Text style={styles.activeBadgeText}>● Active</Text>
+                        </View>
+                    </View>
 
-                    <Text style={styles.dayText}>Progress: {currentRoadmap?.progress || 0}% Complete</Text>
+                    <Text style={styles.cardTitle}>
+                        {currentRoadmap.title || currentRoadmap.target_course || "Active Roadmap"}
+                    </Text>
+                    {currentRoadmap.overview ? (
+                        <Text style={styles.cardOverview} numberOfLines={1}>
+                            {currentRoadmap.overview}
+                        </Text>
+                    ) : null}
+
+                    <Text style={styles.dayText}>
+                        Progress: {currentRoadmap.progress || 0}% Complete
+                    </Text>
                     <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, { width: `${currentRoadmap?.progress || 0}%` }]} />
+                        <View style={[
+                            styles.progressBarFill,
+                            { width: `${currentRoadmap.progress || 0}%` }
+                        ]} />
                     </View>
 
                     <View style={styles.button}>
-                        <Text style={styles.buttonText}>Open Roadmap</Text>
+                        <Text style={styles.buttonText}>Open Roadmap →</Text>
                     </View>
                 </TouchableOpacity>
+            ) : (
+                // ✅ NO ROADMAP — prompt to create
+                <View style={[styles.card, { backgroundColor: '#64748B' }]}>
+                    <Text style={styles.cardTitle}>No Active Roadmap</Text>
+                    <Text style={styles.dayText}>
+                        Start your AI-powered learning journey today.
+                    </Text>
+                    <TouchableOpacity
+                        style={styles.button}
+                        onPress={() => navigation.navigate('EditLearningInfo')}
+                    >
+                        <Text style={[styles.buttonText, { color: '#64748B' }]}>
+                            Create Roadmap
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            )}
 
-
+            {/* ── Stats ── */}
             <Text style={styles.sectionHeader}>Your Progress</Text>
             <View style={styles.statsRow}>
                 <View style={styles.statBox}>
@@ -83,6 +134,7 @@ const HomeScreen = ({ navigation }) => {
                 </View>
             </View>
 
+            {/* ── Yesterday's Learnings ── */}
             <View style={[styles.statBox, { width: '100%', marginTop: 15, alignItems: 'flex-start' }]}>
                 <Text style={styles.learningHeader}>💡 Yesterday's Key Learnings</Text>
                 <View style={styles.learningList}>
@@ -91,6 +143,7 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={styles.learningItem}>• Solved 3 Linked List problems.</Text>
                 </View>
             </View>
+
             <View style={{ height: 40 }} />
         </ScrollView>
     );
@@ -105,12 +158,16 @@ const styles = StyleSheet.create({
     streakText: { fontWeight: 'bold', color: '#FFAC33' },
 
     card: { backgroundColor: '#9788FB', padding: 25, borderRadius: 25, elevation: 8, shadowColor: '#9788FB', shadowOpacity: 0.3, shadowRadius: 10 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     cardLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '800', letterSpacing: 1 },
+    activeBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    activeBadgeText: { color: '#4ADE80', fontSize: 10, fontWeight: 'bold' },
     cardTitle: { color: '#FFF', fontSize: 22, fontWeight: 'bold', marginTop: 5 },
-    dayText: { color: '#E0E0E0', marginTop: 10, marginBottom: 10, fontSize: 14 },
+    cardOverview: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 3 },
+    dayText: { color: '#E0E0E0', marginTop: 15, marginBottom: 8, fontSize: 14 },
     progressBarBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 4 },
     progressBarFill: { height: 8, backgroundColor: '#FFF', borderRadius: 4 },
-    button: { backgroundColor: '#FFF', marginTop: 25, padding: 14, borderRadius: 15, alignItems: 'center' },
+    button: { backgroundColor: '#FFF', marginTop: 20, padding: 14, borderRadius: 15, alignItems: 'center' },
     buttonText: { color: '#9788FB', fontWeight: 'bold', fontSize: 16 },
 
     sectionHeader: { fontSize: 18, fontWeight: 'bold', marginVertical: 20, color: '#1A1A1A' },

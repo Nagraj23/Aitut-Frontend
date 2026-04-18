@@ -16,7 +16,7 @@ import { AUTH_URL } from "../Constants/Api";
 
 const { width } = Dimensions.get('window');
 
-const EditLearningInfoScreen = ({ navigation }) => {
+const EditLearningInfo = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState({ p1: false, p2: false });
     const [canGenerate, setCanGenerate] = useState(false);
@@ -60,31 +60,56 @@ const EditLearningInfoScreen = ({ navigation }) => {
     };
 
     // --- STEP 2: DJANGO GENERATION ---
-    const handleGenerateRoadmap = async (phaseNum) => {
-        const phaseKey = phaseNum === 1 ? 'p1' : 'p2';
-        setGenerating(prev => ({ ...prev, [phaseKey]: true }));
+    // const handleGenerateRoadmap = async (phaseNum) => {
+    //     const phaseKey = phaseNum === 1 ? 'p1' : 'p2';
+    //     setGenerating(prev => ({ ...prev, [phaseKey]: true }));
 
+    //     try {
+    //         const details = await AsyncStorage.getItem('userDetails');
+    //         const user = JSON.parse(details);
+
+    //         const response = await axios.post(`http://YOUR_DJANGO_IP:8000/api/roadmaps/generate/`, {
+    //             user_id: user.id,
+    //             target_course: courseData.targetCourse,
+    //             phase: phaseNum,
+    //             is_complete: true
+    //         });
+
+    //         if (response.status === 201 || response.status === 200) {
+    //             Alert.alert(`Phase ${phaseNum} Success`, "Your AI Roadmap is ready.", [
+    //                 { text: "View Now", onPress: () => navigation.navigate('RoadmapDetail', { data: response.data }) }
+    //             ]);
+    //         }
+    //     } catch (error) {
+    //         Alert.alert("AI Error", `Failed to generate Phase ${phaseNum}.`);
+    //     } finally {
+    //         setGenerating(prev => ({ ...prev, [phaseKey]: false }));
+    //     }
+    // };
+    const handleGenerateRoadmap = async (phaseNum) => {
+    if (phaseNum === 1) {
+        // Phase 1 is the Diagnostic/Onboarding phase
+        // Navigate to the DiagnosticTest screen
+        navigation.navigate('DiagnosticTest');
+    } else {
+        // Phase 2 logic (e.g., generating the final roadmap after day 7)
+        setGenerating(prev => ({ ...prev, p2: true }));
         try {
             const details = await AsyncStorage.getItem('userDetails');
             const user = JSON.parse(details);
-
-            const response = await axios.post(`http://YOUR_DJANGO_IP:8000/api/roadmaps/generate/`, {
+            
+            // Your existing Django call for Phase 2
+            const response = await axios.post(`http://10.205.155.26:8000/api/roadmaps/generate/`, {
                 user_id: user.id,
-                target_course: courseData.targetCourse,
-                phase: phaseNum,
-                is_complete: true
+                phase: 2
             });
-
-            if (response.status === 201 || response.status === 200) {
-                Alert.alert(`Phase ${phaseNum} Success`, "Your AI Roadmap is ready.", [
-                    { text: "View Now", onPress: () => navigation.navigate('RoadmapDetail', { data: response.data }) }
-                ]);
-            }
+            // ... handle response
         } catch (error) {
-            Alert.alert("AI Error", `Failed to generate Phase ${phaseNum}.`);
+            Alert.alert("AI Error", "Please complete Phase 1 (Diagnostic Test) first.");
         } finally {
-            setGenerating(prev => ({ ...prev, [phaseKey]: false }));
+            setGenerating(prev => ({ ...prev, p2: false }));
         }
+    }
     };
 
     return (
@@ -167,7 +192,7 @@ const EditLearningInfoScreen = ({ navigation }) => {
                             onPress={() => handleGenerateRoadmap(1)}
                             disabled={generating.p1}
                         >
-                            {generating.p1 ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnText}>🚀 Phase 1</Text>}
+                            {generating.p1 ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnText}>🚀 Start Diagnostic Test</Text>}
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -222,4 +247,4 @@ const styles = StyleSheet.create({
     btnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
 });
 
-export default EditLearningInfoScreen;
+export default EditLearningInfo ;

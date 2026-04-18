@@ -4,7 +4,7 @@ import { AUTH_URL } from "../Constants/Api";
 import OtpInput from "./OtpInput"; // Adjust path
 
 const VerifyAccount = ({ navigation, route }) => {
-    const { email } = route.params;
+    const { email,type } = route.params;
     const [otp, setOtp] = useState(["", "", "", ""]);
     const [loading, setLoading] = useState(false);
 
@@ -20,11 +20,11 @@ const VerifyAccount = ({ navigation, route }) => {
                 body: JSON.stringify({
                     email: email,
                     otp: otpCode,
-                    type: "RESET"
+                    type: type
                 }),
             });
-
-            console.log("Response Status:", res.status);
+                // console.log(body);
+                console.log("Response Status:", res.status);
 
             // --- FIX STARTS HERE ---
             const contentType = res.headers.get("content-type");
