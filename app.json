@@ -4,11 +4,10 @@
     "slug": "aitut",
     "version": "1.0.0",
     "plugins": [
-      "@react-native-google-signin/google-signin"
+
     ],
     "android": {
       "package": "com.example.demo",
-      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "pan"
     }
   }

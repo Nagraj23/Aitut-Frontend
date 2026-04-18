@@ -30,26 +30,20 @@ import TPOHomeScreen from "./Screens/TPO/TPOHomeScreen";
 import TPOProfile from "./Screens/TPO/TPOProfile";
 import RegisterStudentScreen from "./Screens/TPO/RegisterStudentScreen";
 import TPOProfileScreen from './Screens/TPO/TPOProfile';
+import ProfileScreen from "./Screens/Profile";
+import BranchStudentList from "./Screens/TPO/BranchWiseStudent";
 
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
-    const { isLoading, userToken, user } = useContext(AuthContext);
+    const { isLoading, userToken, role } = useContext(AuthContext);
 
-    // 🔥 DEBUG LOGS (IMPORTANT)
-    console.log("👤 USER FROM CONTEXT:", user);
-    console.log("🎭 USER ROLE:", user?.role);
-    console.log("🔐 TOKEN:", userToken);
+    // Normalize role check
+    const userRole = role?.toUpperCase();
 
-    // Loading screen
     if (isLoading) {
         return (
-            <View style={{
-                flex: 1,
-                justifyContent: 'center',
-                alignItems: 'center',
-                backgroundColor: '#9788FB'
-            }}>
+            <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#ffffff" />
             </View>
         );
@@ -57,43 +51,38 @@ const AppNavigator = () => {
 
     return (
         <NavigationContainer>
-            <Stack.Navigator
-                screenOptions={{
-                    headerShown: false,
-                    animation: 'slide_from_right'
-                }}
-            >
+            <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
 
-                {/* 🔐 AUTH STACK */}
                 {userToken == null ? (
+                    /* 🔐 AUTH STACK */
                     <>
                         <Stack.Screen name="Landing" component={Landing} />
                         <Stack.Screen name="Login" component={Login} />
                         <Stack.Screen name="Register" component={Register} />
                         <Stack.Screen name="VerifyOTP" component={VerifyOTP} />
-                        <Stack.Screen name="Email" component={Email} />
-                        <Stack.Screen name="ResetOtp" component={ResetSecurity} />
-                        <Stack.Screen name="ResetPassword" component={ResetPassword} />
+                        {/* ... other auth screens */}
                     </>
-                ) : user?.role === "TPO" ? (
+                ) : userRole === "TPO" ? (
                     /* 🧑‍💼 TPO STACK */
                     <>
-                        <Stack.Screen name="TPOHome" component={TPOHomeScreen} />
-                        <Stack.Screen name="TPOProfile" component={TPOProfileScreen} />
+                        {/* 'Main' contains the Bottom Tabs (Dashboard + Profile) */}
+                        <Stack.Screen name="Main" component={AppTabs} />
+
+                        <Stack.Screen name="BranchStudents" component={BranchStudentList} />
+                        {/* Screens TPO can navigate to FROM the dashboard */}
                         <Stack.Screen name="RegisterStudent" component={RegisterStudentScreen} />
+                        {/* Add the Branch Detail screen here so the card click works */}
+                        {/*<Stack.Screen name="BranchStudentList" component={BranchStudentListScreen} />*/}
                     </>
                 ) : (
-                    /* 👨‍🎓 NORMAL USER STACK */
+                    /* 👨‍🎓 STUDENT STACK */
                     <>
                         <Stack.Screen name="Main" component={AppTabs} />
 
-                        {/* Common screens */}
+                        {/* Student specific sub-pages */}
                         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-                        <Stack.Screen name="EditLearningInfo" component={EditLearningInfo} />
-                        <Stack.Screen name="EditBasicInfo" component={basicEdit} />
                         <Stack.Screen name="DiagnosticTest" component={DiagnosticTest} />
                         <Stack.Screen name="Roadmap" component={RoadmapScreen} />
-                        <Stack.Screen name="Teach" component={TeachScreen} />
                         <Stack.Screen name="TestResult" component={TestResult} />
                     </>
                 )}
