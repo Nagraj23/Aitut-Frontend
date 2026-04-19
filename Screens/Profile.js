@@ -46,13 +46,13 @@ const ProfileScreen = ({ navigation }) => {
                         label="Basic Info"
                         subLabel="Personal details & Contact"
                         icon="👤"
-                        onPress={() => navigation.navigate('EditBasicInfo')}
+                        onPress={() => navigation.navigate('EditProfile', { type: 'basic' })}
                     />
                     <SquareCard
                         label="Academic Info"
                         subLabel="College, Degree & Year"
                         icon="🎓"
-                        onPress={() => navigation.navigate('EditLearning')}
+                        onPress={() => navigation.navigate('EditProfile', { type: 'learning' })}
                     />
                 </View>
                 <View style={styles.row}>

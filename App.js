@@ -1,11 +1,15 @@
 import React from 'react';
+// App.js
+import AppNavigator from "./AppNavigator";
 import { AuthProvider } from './context/AuthContext';
-import AppNavigator from './AppNavigator';
+import { UserProvider } from './context/UserContext';
 
 export default function App() {
     return (
         <AuthProvider>
-            <AppNavigator />
+            <UserProvider> {/* UserProvider MUST be inside AuthProvider */}
+                <AppNavigator />
+            </UserProvider>
         </AuthProvider>
     );
 }

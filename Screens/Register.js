@@ -8,23 +8,25 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
+    ScrollView,
     Platform,
     ActivityIndicator,
     KeyboardAvoidingView,
     Image,
-    ScrollView,
 } from "react-native";
-
 import Feather from "react-native-vector-icons/Feather";
 import { useNavigation } from "@react-navigation/native";
 import { AUTH_URL } from "../Constants/Api";
 import axios from "axios";
+import { Picker } from "@react-native-picker/picker";
 
-const ROLES = ["STUDENT", "TEACHER", "TPO"]; // ❌ removed ADMIN (security)
+const ROLES = [
+    { label: "Student", value: "STUDENT" },
+    { label: "Teacher", value: "TEACHER" },
+    { label: "TPO", value: "TPO" },
+];
 
-function validateEmail(email) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -48,32 +50,21 @@ const Register = () => {
         let e = {};
         if (!formData.name) e.name = "Name required";
         if (!validateEmail(formData.email)) e.email = "Invalid email";
-        if (formData.password.length < 6)
-            e.password = "Min 6 characters";
+        if (formData.password.length < 6) e.password = "Min 6 characters";
         setErrors(e);
         return Object.keys(e).length === 0;
     };
 
     const handleRegister = async () => {
         if (!validateForm() || !agree) {
-            if (!agree)
-                Alert.alert(
-                    "Terms",
-                    "Please agree to Terms & Conditions"
-                );
+            if (!agree) Alert.alert("Terms", "Please agree to Terms & Conditions");
             return;
         }
 
         setIsLoading(true);
         try {
-            console.log("📤 Payload:", formData);
+            const res = await axios.post(`${AUTH_URL}/register`, formData);
 
-            const res = await axios.post(
-                ` ${AUTH_URL}/register ` ,
-                formData
-            );
-            
-            
             const message = res.data;
 
             if (Platform.OS === "android") {
@@ -86,10 +77,16 @@ const Register = () => {
                 email: formData.email,
                 type: "ACCOUNT",
             });
+
         } catch (err) {
-            const errorMsg =
-                err.response?.data || "Registration failed";
-            Alert.alert("Error", errorMsg);
+            const errorMsg = err.response?.data || "Registration failed";
+
+            Alert.alert(
+                "Error",
+                errorMsg.includes("Email already registered")
+                    ? "Email already exists. Try login or different email."
+                    : errorMsg
+            );
         } finally {
             setIsLoading(false);
         }
@@ -97,80 +94,78 @@ const Register = () => {
 
     return (
         <View style={styles.container}>
-            <StatusBar
-                barStyle="light-content"
-                translucent
-                backgroundColor="transparent"
-            />
+            <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-            {/* Header */}
             <View style={styles.headerBackground}>
                 <Text style={styles.brandName}>AiTut</Text>
             </View>
 
-            {/* Form */}
             <KeyboardAvoidingView
-                behavior={
-                    Platform.OS === "ios" ? "padding" : "height"
-                }
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
                 style={styles.formCard}
             >
                 <ScrollView
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
                 >
-                    <Text style={styles.welcomeTitle}>
-                        Register
+                    <Text style={styles.welcomeTitle}>Register</Text>
+                    <Text style={styles.welcomeSubtitle}>
+                        Create new account for better service
                     </Text>
 
-                    {/* Name */}
-                    <View style={styles.inputWrapper}>
-                        <Text style={styles.label}>Name</Text>
-                        <View
-                            style={[
-                                styles.inputContainer,
-                                errors.name && styles.errorBorder,
-                            ]}
-                        >
-                            <Feather
-                                name="user"
-                                size={18}
-                                color="#CBD5E1"
-                            />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Your Name"
-                                value={formData.name}
-                                onChangeText={(v) =>
-                                    handleChange("name", v)
-                                }
-                            />
+                    {/* 🔥 Name + Role Row */}
+                    <View style={styles.row}>
+                        {/* Name */}
+                        <View style={[styles.inputWrapper, { flex: 0.6 }]}>
+                            <Text style={styles.label}>Name</Text>
+                            <View style={[styles.inputContainer, errors.name && styles.errorBorder]}>
+                                <Feather name="user" size={18} color="#CBD5E1" style={styles.inputIcon} />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Johan"
+                                    placeholderTextColor="#CBD5E1"
+                                    value={formData.name}
+                                    onChangeText={(v) => handleChange("name", v)}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Role */}
+                        <View style={[styles.inputWrapper, { flex: 0.4, marginLeft: 10 }]}>
+                            <Text style={styles.label}>Role</Text>
+                            <View style={styles.inputContainer}>
+                                <Picker
+                                    selectedValue={formData.role}
+                                    style={styles.picker}
+                                    dropdownIconColor="#64748B"
+                                    onValueChange={(itemValue) =>
+                                        handleChange("role", itemValue)
+                                    }
+                                >
+                                    {ROLES.map((r) => (
+                                        <Picker.Item
+                                            key={r.value}
+                                            label={r.label}
+                                            value={r.value}
+                                        />
+                                    ))}
+                                </Picker>
+                            </View>
                         </View>
                     </View>
 
                     {/* Email */}
                     <View style={styles.inputWrapper}>
                         <Text style={styles.label}>Email</Text>
-                        <View
-                            style={[
-                                styles.inputContainer,
-                                errors.email &&
-                                    styles.errorBorder,
-                            ]}
-                        >
-                            <Feather
-                                name="mail"
-                                size={18}
-                                color="#CBD5E1"
-                            />
+                        <View style={[styles.inputContainer, errors.email && styles.errorBorder]}>
+                            <Feather name="mail" size={18} color="#CBD5E1" style={styles.inputIcon} />
                             <TextInput
                                 style={styles.input}
-                                placeholder="email@gmail.com"
+                                placeholder="example@gmail.com"
+                                placeholderTextColor="#CBD5E1"
                                 keyboardType="email-address"
                                 value={formData.email}
-                                onChangeText={(v) =>
-                                    handleChange("email", v)
-                                }
+                                onChangeText={(v) => handleChange("email", v)}
                             />
                         </View>
                     </View>
@@ -178,84 +173,40 @@ const Register = () => {
                     {/* Password */}
                     <View style={styles.inputWrapper}>
                         <Text style={styles.label}>Password</Text>
-                        <View
-                            style={[
-                                styles.inputContainer,
-                                errors.password &&
-                                    styles.errorBorder,
-                            ]}
-                        >
-                            <Feather
-                                name="lock"
-                                size={18}
-                                color="#CBD5E1"
-                            />
+                        <View style={[styles.inputContainer, errors.password && styles.errorBorder]}>
+                            <Feather name="lock" size={18} color="#CBD5E1" style={styles.inputIcon} />
                             <TextInput
                                 style={styles.input}
                                 placeholder="password"
+                                placeholderTextColor="#CBD5E1"
                                 secureTextEntry
                                 value={formData.password}
-                                onChangeText={(v) =>
-                                    handleChange("password", v)
-                                }
+                                onChangeText={(v) => handleChange("password", v)}
                             />
-                        </View>
-                    </View>
-
-                    {/* 🔥 ROLE SELECTOR */}
-                    <View style={styles.inputWrapper}>
-                        <Text style={styles.label}>
-                            Select Role
-                        </Text>
-
-                        <View style={styles.roleContainer}>
-                            {ROLES.map((role) => (
-                                <TouchableOpacity
-                                    key={role}
-                                    style={[
-                                        styles.roleButton,
-                                        formData.role === role &&
-                                            styles.roleActive,
-                                    ]}
-                                    onPress={() =>
-                                        handleChange("role", role)
-                                    }
-                                >
-                                    <Text
-                                        style={[
-                                            styles.roleText,
-                                            formData.role ===
-                                                role &&
-                                                styles.roleTextActive,
-                                        ]}
-                                    >
-                                        {role}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
                         </View>
                     </View>
 
                     {/* Button */}
                     <TouchableOpacity
-                        style={styles.signUpButton}
+                        style={[styles.signUpButton, isLoading && { opacity: 0.7 }]}
                         onPress={handleRegister}
                         disabled={isLoading}
                     >
                         {isLoading ? (
-                            <ActivityIndicator
-                                color="#fff"
-                            />
+                            <ActivityIndicator color="#fff" />
                         ) : (
-                            <Text
-                                style={
-                                    styles.signUpButtonText
-                                }
-                            >
-                                Sign Up
-                            </Text>
+                            <Text style={styles.signUpButtonText}>Sign up</Text>
                         )}
                     </TouchableOpacity>
+
+                    <View style={styles.footer}>
+                        <Text style={styles.footerText}>
+                            Already have an account?
+                        </Text>
+                        <TouchableOpacity onPress={() => navigation.navigate("Login")}>
+                            <Text style={styles.signInText}> Sign in</Text>
+                        </TouchableOpacity>
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
         </View>
@@ -282,23 +233,39 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         borderTopLeftRadius: 40,
         borderTopRightRadius: 40,
-        padding: 20,
+        marginTop: -30,
+        paddingHorizontal: 25,
     },
 
-    scrollContent: { paddingBottom: 40 },
+    scrollContent: { paddingTop: 20, paddingBottom: 40 },
 
     welcomeTitle: {
-        fontSize: 28,
+        fontSize: 34,
         fontWeight: "bold",
         textAlign: "center",
-        marginBottom: 20,
+        color: "#1E293B",
     },
 
-    inputWrapper: { marginBottom: 15 },
+    welcomeSubtitle: {
+        fontSize: 15,
+        color: "#dc1010",
+        textAlign: "center",
+        marginTop: 8,
+        marginBottom: 25,
+    },
+
+    row: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+
+    inputWrapper: { marginBottom: 18 },
 
     label: {
+        fontSize: 16,
         fontWeight: "bold",
-        marginBottom: 5,
+        color: "#1E293B",
+        marginBottom: 6,
     },
 
     inputContainer: {
@@ -306,61 +273,51 @@ const styles = StyleSheet.create({
         alignItems: "center",
         borderWidth: 1,
         borderColor: "#F1F5F9",
-        borderRadius: 10,
-        padding: 10,
+        borderRadius: 25,
+        height: 50,
+        paddingHorizontal: 10,
     },
 
-    input: {
+    inputIcon: { marginRight: 8 },
+
+    input: { flex: 1, fontSize: 16, color: "#1E293B" },
+
+    picker: {
         flex: 1,
-        marginLeft: 10,
+        color: "#1E293B",
     },
 
-    errorBorder: {
-        borderColor: "red",
-    },
-
-    /* 🔥 ROLE STYLES */
-    roleContainer: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-    },
-
-    roleButton: {
-        flex: 1,
-        padding: 10,
-        borderWidth: 1,
-        borderRadius: 10,
-        marginHorizontal: 5,
-        alignItems: "center",
-        borderColor: "#ccc",
-    },
-
-    roleActive: {
-        backgroundColor: "#4f46e5",
-        borderColor: "#4f46e5",
-    },
-
-    roleText: {
-        color: "#333",
-    },
-
-    roleTextActive: {
-        color: "#fff",
-        fontWeight: "bold",
-    },
+    errorBorder: { borderColor: "#ef233c" },
 
     signUpButton: {
         backgroundColor: "#4f46e5",
-        padding: 15,
-        borderRadius: 10,
+        height: 55,
+        borderRadius: 30,
+        justifyContent: "center",
         alignItems: "center",
-        marginTop: 20,
+        marginBottom: 20,
     },
 
     signUpButtonText: {
-        color: "#fff",
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: "bold",
+        color: "#fff",
+    },
+
+    footer: {
+        flexDirection: "row",
+        justifyContent: "center",
+    },
+
+    footerText: {
+        color: "#94A3B8",
+        fontSize: 16,
+    },
+
+    signInText: {
+        fontWeight: "bold",
+        color: "#1E293B",
+        fontSize: 16,
     },
 });
 

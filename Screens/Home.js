@@ -1,45 +1,21 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AI_URL } from '../Constants/Api'; // ← use your constant, not hardcoded IP
+import { UserContext } from '../context/UserContext'; // ✅ NEW
 
 const HomeScreen = ({ navigation }) => {
-    const { isComplete } = useContext(AuthContext);
-    const [loading, setLoading] = useState(true);
-    const [currentRoadmap, setCurrentRoadmap] = useState(null);
-    const [user, setUser] = useState(null);
+    const { isComplete, userToken } = useContext(AuthContext);
 
-    const fetchActiveRoadmap = async () => {
-        try {
-            const details = await AsyncStorage.getItem('userDetails');
-            if (!details) { setLoading(false); return; }
+    // ✅ GET FROM CONTEXT
+    const { userData, roadmap, isDataLoading } = useContext(UserContext);
 
-            const userData = JSON.parse(details);
-            setUser(userData);
-
-            const response = await axios.get(`${AI_URL}/get-roadmap/${userData.id}`);
-            if (response.data && response.data.exists !== false) {
-                setCurrentRoadmap(response.data);
-            }
-        } catch (error) {
-            console.log("No active roadmap found");
-            setCurrentRoadmap(null);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => { fetchActiveRoadmap(); }, []);
+    const currentRoadmap = roadmap;
+    const user = userData;
 
     const handleContinuePress = () => {
-        if (!isComplete) {
-            Alert.alert("Profile Incomplete", "Please complete your profile in settings first.");
-        } else if (!currentRoadmap) {
+         if (!currentRoadmap) {
             navigation.navigate('EditLearningInfo');
         } else {
-            // ✅ Navigate to Roadmap screen with data
             navigation.navigate('Roadmap', {
                 roadmapData: currentRoadmap,
                 userId: user?.id
@@ -64,12 +40,11 @@ const HomeScreen = ({ navigation }) => {
             </View>
 
             {/* ── Dynamic Roadmap Card ── */}
-            {loading ? (
+            {isDataLoading ? (
                 <View style={[styles.card, { justifyContent: 'center', height: 200 }]}>
                     <ActivityIndicator color="#FFF" size="large" />
                 </View>
             ) : currentRoadmap ? (
-                // ✅ HAS ROADMAP — show progress card
                 <TouchableOpacity activeOpacity={0.9} style={styles.card} onPress={handleContinuePress}>
                     <View style={styles.cardHeader}>
                         <Text style={styles.cardLabel}>CURRENT LEARNING</Text>
@@ -81,6 +56,7 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={styles.cardTitle}>
                         {currentRoadmap.title || currentRoadmap.target_course || "Active Roadmap"}
                     </Text>
+
                     {currentRoadmap.overview ? (
                         <Text style={styles.cardOverview} numberOfLines={1}>
                             {currentRoadmap.overview}
@@ -90,6 +66,7 @@ const HomeScreen = ({ navigation }) => {
                     <Text style={styles.dayText}>
                         Progress: {currentRoadmap.progress || 0}% Complete
                     </Text>
+
                     <View style={styles.progressBarBg}>
                         <View style={[
                             styles.progressBarFill,
@@ -102,7 +79,6 @@ const HomeScreen = ({ navigation }) => {
                     </View>
                 </TouchableOpacity>
             ) : (
-                // ✅ NO ROADMAP — prompt to create
                 <View style={[styles.card, { backgroundColor: '#64748B' }]}>
                     <Text style={styles.cardTitle}>No Active Roadmap</Text>
                     <Text style={styles.dayText}>

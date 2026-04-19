@@ -29,7 +29,7 @@ const TPOProfileScreen = ({ navigation }) => {
                 <View style={styles.avatarPlaceholder}>
                     <Text style={styles.avatarText}>{user?.name?.charAt(0) || 'T'}</Text>
                 </View>
-                <Text style={styles.userName}>{user?.name || 'Prof. M. K. Naral'}</Text>
+                <Text style={styles.userName}>{user?.name }</Text>
                 <Text style={styles.userRole}>ADMIN • PLACEMENT OFFICER</Text>
 
                 <View style={styles.badge}>
