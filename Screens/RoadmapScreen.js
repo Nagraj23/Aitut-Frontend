@@ -1,155 +1,143 @@
-import React, { useState } from 'react';
-import {
-    View, Text, StyleSheet, ScrollView,
-    TouchableOpacity, StatusBar
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// ── Mock data — replace with real API data later ──
-const MOCK_ROADMAP = {
-    title: "Data Structures & Algorithms",
-    subject: "CSE",
-    totalDays: 7,
-    progress: 28,
-    days: [
-        {
-            day: 1,
-            topic: "Arrays & Sorting",
-            subject: "DSA",
-            task: "Learn Bubble Sort, Selection Sort. Solve 5 practice problems.",
-            status: "completed",
-            duration: "45 min",
-        },
-        {
-            day: 2,
-            topic: "Linked Lists",
-            subject: "DSA",
-            task: "Understand Singly & Doubly Linked Lists. Implement insert & delete.",
-            status: "active",
-            duration: "60 min",
-        },
-        {
-            day: 3,
-            topic: "Stacks & Queues",
-            subject: "DSA",
-            task: "Implement Stack using arrays. Solve balanced parentheses problem.",
-            status: "locked",
-            duration: "50 min",
-        },
-        {
-            day: 4,
-            topic: "Binary Trees",
-            subject: "DSA",
-            task: "Learn tree traversals: Inorder, Preorder, Postorder.",
-            status: "locked",
-            duration: "70 min",
-        },
-        {
-            day: 5,
-            topic: "Binary Search Tree",
-            subject: "DSA",
-            task: "Insert, delete, search in BST. Understand AVL rotations.",
-            status: "locked",
-            duration: "65 min",
-        },
-        {
-            day: 6,
-            topic: "Graphs - BFS & DFS",
-            subject: "DSA",
-            task: "Implement BFS and DFS. Solve shortest path problem.",
-            status: "locked",
-            duration: "80 min",
-        },
-        {
-            day: 7,
-            topic: "Dynamic Programming",
-            subject: "DSA",
-            task: "Learn memoization. Solve Fibonacci, Knapsack problems.",
-            status: "locked",
-            duration: "90 min",
-        },
-    ]
-};
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { ASSESSMENT_URL } from '../Constants/Api';
 
 const statusConfig = {
-    completed: { color: '#4ADE80', bg: '#F0FDF4', icon: '✅', label: 'Completed' },
-    active:    { color: '#9788FB', bg: '#EDE9FF', icon: '▶️', label: 'Start Today' },
-    locked:    { color: '#94A3B8', bg: '#F8FAFC', icon: '🔒', label: 'Locked' },
+    completed:        { color: '#4ADE80', bg: '#F0FDF4', icon: '✅', label: 'Done' },
+    active:           { color: '#9788FB', bg: '#EDE9FF', icon: '▶️', label: 'Today' },
+    locked:           { color: '#94A3B8', bg: '#F8FAFC', icon: '🔒', label: 'Locked' },
+    Learning:         { color: '#3B82F6', bg: '#EFF6FF', icon: '📖', label: 'Learning' },
+    'Problem Solving':{ color: '#F97316', bg: '#FFF7ED', icon: '💡', label: 'Practice' },
+    Test:             { color: '#EF4444', bg: '#FEF2F2', icon: '📝', label: 'Test' },
+    Free:             { color: '#8B5CF6', bg: '#F5F3FF', icon: '🔁', label: 'Revision' },
 };
 
-const RoadmapScreen = ({ navigation, route }) => {
-    // Use passed data or fallback to mock
-    const roadmap = route?.params?.roadmapData || MOCK_ROADMAP;
+const getConfig = (item) => {
+    if (item.is_completed) return statusConfig.completed;
+    if (item.type && statusConfig[item.type]) return statusConfig[item.type];
+    return statusConfig.locked;
+};
 
-    const renderDayCard = (item) => {
-        const config = statusConfig[item.status];
-        const isLocked = item.status === 'locked';
+export default function RoadmapScreen({ navigation, route }) {
+    const [roadmap, setRoadmap] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [testsCompleted, setTestsCompleted] = useState(0);
 
+    useEffect(() => {
+        loadRoadmap();
+    }, []);
+
+    const loadRoadmap = async () => {
+        try {
+            // If roadmap data was passed via navigation params, use it directly
+            if (route?.params?.roadmapData) {
+                setRoadmap(normalizeRoadmap(route.params.roadmapData));
+                setLoading(false);
+                return;
+            }
+
+            // Otherwise fetch from backend
+            const details = await AsyncStorage.getItem('userDetails');
+            const token = await AsyncStorage.getItem('accessToken');
+            const count = parseInt(await AsyncStorage.getItem('testsCompleted') || '0');
+            setTestsCompleted(count);
+
+            if (!details) { setLoading(false); return; }
+            const user = JSON.parse(details);
+
+            const response = await axios.get(
+                `${ASSESSMENT_URL}/api/roadmaps/latest/${user.id}/`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (response.data?.exists !== false) {
+                setRoadmap(normalizeRoadmap(response.data));
+            }
+        } catch (e) {
+            console.log('Roadmap fetch error:', e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Normalize both the old mock format and new API format
+    const normalizeRoadmap = (data) => {
+        if (data.days) return data; // already mock format
+        return {
+            title: data.title || 'My Learning Path',
+            totalDays: data.daily_plan?.length || 0,
+            progress: data.progress || 0,
+            overview: data.overview,
+            days: (data.daily_plan || []).map((item, idx) => ({
+                day: item.day || idx + 1,
+                topic: item.topic,
+                task: item.task,
+                subject: item.type || 'Learning',
+                duration: '45 min',
+                status: item.is_completed ? 'completed' : (idx === 0 ? 'active' : 'locked'),
+                type: item.type,
+                is_completed: item.is_completed,
+            }))
+        };
+    };
+
+    // ── Assessment incomplete screen ──
+    if (!loading && !roadmap) {
+        const testsLeft = 3 - testsCompleted;
         return (
-            <View key={item.day} style={styles.cardWrapper}>
-
-                {/* Left — Day number + connector line */}
-                <View style={styles.timelineCol}>
-                    <View style={[styles.dayCircle, { backgroundColor: config.color }]}>
-                        <Text style={styles.dayNum}>D{item.day}</Text>
-                    </View>
-                    {item.day < roadmap.days.length && (
-                        <View style={[
-                            styles.connector,
-                            { backgroundColor: item.status === 'completed' ? '#4ADE80' : '#E2E8F0' }
-                        ]} />
-                    )}
+            <SafeAreaView style={styles.safeArea} edges={['top']}>
+                <StatusBar backgroundColor="#9788FB" barStyle="light-content" />
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                        <Text style={styles.backIcon}>←</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>My Roadmap</Text>
+                    <View style={{ width: 36 }} />
                 </View>
 
-                {/* Right — Content card */}
-                <View style={[styles.card, { backgroundColor: config.bg, opacity: isLocked ? 0.7 : 1 }]}>
-                    <View style={styles.cardTop}>
-                        <View style={styles.cardMeta}>
-                            <Text style={styles.subjectTag}>{item.subject}</Text>
-                            <Text style={styles.duration}>⏱ {item.duration}</Text>
-                        </View>
-                        <Text style={[styles.statusLabel, { color: config.color }]}>
-                            {config.icon} {config.label}
+                <View style={styles.emptyContainer}>
+                    <View style={styles.emptyCard}>
+                        <Text style={styles.emptyEmoji}>🧩</Text>
+                        <Text style={styles.emptyTitle}>Roadmap Not Ready Yet</Text>
+                        <Text style={styles.emptySubtitle}>
+                            Complete {testsLeft} more diagnostic test{testsLeft !== 1 ? 's' : ''} so the AI can build your personalized learning path.
                         </Text>
-                    </View>
 
-                    <Text style={styles.topicTitle}>{item.topic}</Text>
-                    <Text style={styles.taskText}>{item.task}</Text>
+                        {/* Dots progress */}
+                        <View style={styles.dotsRow}>
+                            {[1, 2, 3].map(n => (
+                                <View key={n} style={[styles.dot, n <= testsCompleted && styles.dotFilled]} />
+                            ))}
+                        </View>
+                        <Text style={styles.dotsLabel}>{testsCompleted}/3 Tests Completed</Text>
 
-                    {/* Only show Start button for active day */}
-                    {item.status === 'active' && (
                         <TouchableOpacity
-                            style={styles.startBtn}
-                            onPress={() => navigation.navigate('Teach', {
-                                day: item.day,
-                                topic: item.topic,
-                                subject: item.subject,
-                                task: item.task,
-                            })}
+                            style={styles.startTestBtn}
+                            onPress={() => navigation.navigate('DiagnosticTest')}
                         >
-                            <Text style={styles.startBtnText}>Start Learning →</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    {item.status === 'completed' && (
-                        <TouchableOpacity
-                            style={[styles.startBtn, { backgroundColor: '#DCFCE7' }]}
-                            onPress={() => navigation.navigate('Teach', {
-                                day: item.day,
-                                topic: item.topic,
-                                subject: item.subject,
-                                task: item.task,
-                            })}
-                        >
-                            <Text style={[styles.startBtnText, { color: '#16A34A' }]}>
-                                Review Again →
+                            <Text style={styles.startTestBtnText}>
+                                Take Test {testsCompleted + 1} →
                             </Text>
                         </TouchableOpacity>
-                    )}
+                    </View>
                 </View>
-            </View>
+            </SafeAreaView>
         );
-    };
+    }
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.safeArea} edges={['top']}>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#9788FB" />
+                    <Text style={{ color: '#64748B', marginTop: 12 }}>Loading your roadmap...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -161,105 +149,133 @@ const RoadmapScreen = ({ navigation, route }) => {
                     <Text style={styles.backIcon}>←</Text>
                 </TouchableOpacity>
                 <View style={styles.headerCenter}>
-                    <Text style={styles.headerTitle}>{roadmap.title}</Text>
-                    <Text style={styles.headerSub}>{roadmap.totalDays} Day Roadmap</Text>
+                    <Text style={styles.headerTitle} numberOfLines={1}>{roadmap.title}</Text>
+                    <Text style={styles.headerSub}>{roadmap.totalDays} Day Plan</Text>
                 </View>
                 <View style={styles.progressPill}>
-                    <Text style={styles.progressPillText}>{roadmap.progress}%</Text>
+                    <Text style={styles.progressPillText}>{roadmap.progress || 0}%</Text>
                 </View>
             </View>
 
-            {/* Overall progress bar */}
+            {/* Progress bar */}
             <View style={styles.overallProgressBg}>
-                <View style={[styles.overallProgressFill, { width: `${roadmap.progress}%` }]} />
+                <View style={[styles.overallProgressFill, { width: `${roadmap.progress || 0}%` }]} />
             </View>
 
-            {/* Day Cards */}
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-            >
-                {roadmap.days.map(renderDayCard)}
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+                {/* Overview */}
+                {roadmap.overview && (
+                    <View style={styles.overviewCard}>
+                        <Text style={styles.overviewText}>{roadmap.overview}</Text>
+                    </View>
+                )}
+
+                {/* Day Cards */}
+                {roadmap.days?.map((item, index) => {
+                    const config = getConfig(item);
+                    return (
+                        <View key={index} style={styles.cardWrapper}>
+                            {/* Timeline */}
+                            <View style={styles.timelineCol}>
+                                <View style={[styles.dayCircle, { backgroundColor: config.color }]}>
+                                    <Text style={styles.dayNum}>D{item.day}</Text>
+                                </View>
+                                {index < roadmap.days.length - 1 && (
+                                    <View style={[styles.connector, { backgroundColor: item.is_completed ? '#4ADE80' : '#E2E8F0' }]} />
+                                )}
+                            </View>
+
+                            {/* Card */}
+                            <View style={[styles.card, { backgroundColor: config.bg }]}>
+                                <View style={styles.cardTop}>
+                                    <View style={styles.cardMeta}>
+                                        <Text style={[styles.typeTag, { color: config.color, backgroundColor: config.color + '20' }]}>
+                                            {config.icon} {item.type || item.subject || 'Learning'}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.statusLabel, { color: config.color }]}>
+                                        {config.label}
+                                    </Text>
+                                </View>
+
+                                <Text style={styles.topicTitle}>{item.topic}</Text>
+                                <Text style={styles.taskText} numberOfLines={3}>{item.task}</Text>
+
+                                {item.is_completed && (
+                                    <TouchableOpacity
+                                        style={[styles.startBtn, { backgroundColor: '#DCFCE7' }]}
+                                        onPress={() => navigation.navigate('Teach', { day: item.day, topic: item.topic, task: item.task })}
+                                    >
+                                        <Text style={[styles.startBtnText, { color: '#16A34A' }]}>Review Again →</Text>
+                                    </TouchableOpacity>
+                                )}
+
+                                {!item.is_completed && index === roadmap.days.findIndex(d => !d.is_completed) && (
+                                    <TouchableOpacity
+                                        style={styles.startBtn}
+                                        onPress={() => navigation.navigate('Teach', { day: item.day, topic: item.topic, task: item.task })}
+                                    >
+                                        <Text style={styles.startBtnText}>Start Learning →</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </View>
+                    );
+                })}
+
                 <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>
     );
-};
+}
 
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: '#9788FB' },
 
-    // Header
-    header: {
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: '#9788FB',
-        paddingHorizontal: 16, paddingVertical: 14,
-    },
-    backBtn: {
-        width: 36, height: 36, borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        justifyContent: 'center', alignItems: 'center',
-    },
+    header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#9788FB', paddingHorizontal: 16, paddingVertical: 14 },
+    backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
     backIcon: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
     headerCenter: { flex: 1, marginLeft: 12 },
-    headerTitle: { color: '#FFF', fontSize: 17, fontWeight: 'bold' },
-    headerSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
-    progressPill: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
-    },
+    headerTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+    headerSub: { color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 2 },
+    progressPill: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
     progressPillText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
 
-    // Overall progress bar
-    overallProgressBg: {
-        height: 4, backgroundColor: 'rgba(255,255,255,0.3)',
-        marginHorizontal: 16, borderRadius: 2, marginBottom: 4,
-    },
-    overallProgressFill: {
-        height: 4, backgroundColor: '#FFF', borderRadius: 2,
-    },
+    overallProgressBg: { height: 4, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 16, borderRadius: 2, marginBottom: 4 },
+    overallProgressFill: { height: 4, backgroundColor: '#FFF', borderRadius: 2 },
 
-    // Scroll
-    scrollContent: {
-        backgroundColor: '#F8F9FE',
-        borderTopLeftRadius: 28, borderTopRightRadius: 28,
-        paddingTop: 24, paddingHorizontal: 16,
-    },
+    scrollContent: { backgroundColor: '#F8F9FE', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 20, paddingHorizontal: 16 },
 
-    // Timeline layout
+    overviewCard: { backgroundColor: '#EEF2FF', borderRadius: 16, padding: 14, marginBottom: 20 },
+    overviewText: { color: '#4338CA', fontSize: 13, lineHeight: 20 },
+
     cardWrapper: { flexDirection: 'row', marginBottom: 0 },
     timelineCol: { alignItems: 'center', width: 44, marginRight: 12 },
-    dayCircle: {
-        width: 36, height: 36, borderRadius: 18,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    dayNum: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
+    dayCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+    dayNum: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
     connector: { width: 2, flex: 1, minHeight: 20, marginVertical: 4 },
 
-    // Content card
-    card: {
-        flex: 1, borderRadius: 20, padding: 16,
-        marginBottom: 16,
-        elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4,
-    },
+    card: { flex: 1, borderRadius: 18, padding: 14, marginBottom: 14, elevation: 1 },
     cardTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-    cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    subjectTag: {
-        backgroundColor: '#EDE9FF', color: '#9788FB',
-        fontSize: 11, fontWeight: 'bold',
-        paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6,
-    },
-    duration: { fontSize: 11, color: '#94A3B8' },
-    statusLabel: { fontSize: 11, fontWeight: '600' },
-    topicTitle: { fontSize: 17, fontWeight: 'bold', color: '#1E293B', marginBottom: 6 },
-    taskText: { fontSize: 13, color: '#475569', lineHeight: 19 },
+    cardMeta: { flexDirection: 'row' },
+    typeTag: { fontSize: 10, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+    statusLabel: { fontSize: 10, fontWeight: '600' },
+    topicTitle: { fontSize: 15, fontWeight: 'bold', color: '#1E293B', marginBottom: 4 },
+    taskText: { fontSize: 12, color: '#475569', lineHeight: 18 },
+    startBtn: { backgroundColor: '#9788FB', marginTop: 12, padding: 10, borderRadius: 10, alignItems: 'center' },
+    startBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
 
-    // Start button
-    startBtn: {
-        backgroundColor: '#9788FB', marginTop: 14,
-        padding: 12, borderRadius: 12, alignItems: 'center',
-    },
-    startBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+    // Empty state
+    emptyContainer: { flex: 1, backgroundColor: '#F8F9FE', justifyContent: 'center', alignItems: 'center', padding: 24 },
+    emptyCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 32, alignItems: 'center', width: '100%', elevation: 5 },
+    emptyEmoji: { fontSize: 52, marginBottom: 16 },
+    emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#1A1A1A', textAlign: 'center' },
+    emptySubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 22, marginTop: 10, marginBottom: 24 },
+    dotsRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
+    dot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#E2E8F0' },
+    dotFilled: { backgroundColor: '#9788FB' },
+    dotsLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginBottom: 24 },
+    startTestBtn: { backgroundColor: '#9788FB', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16 },
+    startTestBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
 });
-
-export default RoadmapScreen;

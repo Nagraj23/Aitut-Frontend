@@ -156,6 +156,7 @@ export default function Login({ navigation }) {
             });
             const data = await response.json();
             if (response.ok) {
+
                 if (rememberMe) {
                     await AsyncStorage.setItem("savedEmail", email);
                     await AsyncStorage.setItem("savedPassword", password);

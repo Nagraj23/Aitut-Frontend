@@ -17,7 +17,7 @@ import ResetPassword from "./Screens/ResetPassword";
 import AppTabs from './Screens/AppTabs';
 import ProfileScreen from "./Screens/Profile";
 import EditProfileScreen from "./Screens/ProfileUpdate";
-import basicEdit from "./Screens/BasicEdit";
+import BasicEdit from "./Screens/BasicEdit";
 // import EditLearning from "./Screens/EditLearningInfo";
 import EditLearningInfo from "./Screens/EditLearningInfo";
 import RoadmapScreen from './Screens/RoadmapScreen';
@@ -68,7 +68,7 @@ const AppNavigator = () => {
                     <Stack.Screen name="Main" component={AppTabs} />
                     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
                     <Stack.Screen name="EditLearningInfo" component={EditLearningInfo} />
-                    <Stack.Screen name="EditBasicInfo" component={basicEdit} />
+                    <Stack.Screen name="EditBasicInfo" component={BasicEdit} />
 
                     <Stack.Screen name="DiagnosticTest" component={DiagnosticTest} />
                     <Stack.Screen name="Roadmap" component={RoadmapScreen} />
