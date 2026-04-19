@@ -1,65 +1,52 @@
-// Screens/TestResult.js
 import React, { useEffect, useRef } from 'react';
-import {
-    View, Text, StyleSheet, TouchableOpacity,
-    Animated, StatusBar, SafeAreaView
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function TestResult({ navigation, route }) {
-    const { dayNumber, onboardingFinished, totalQuestions, mcqCount } = route.params;
+    const { dayNumber, totalDays = 3, onboardingFinished, totalQuestions, mcqCount } = route.params;
 
     const scaleAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        // Entrance animation
         Animated.parallel([
-            Animated.spring(scaleAnim, {
-                toValue: 1, tension: 50, friction: 7, useNativeDriver: true
-            }),
-            Animated.timing(fadeAnim, {
-                toValue: 1, duration: 600, useNativeDriver: true
-            })
+            Animated.spring(scaleAnim, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }),
+            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true })
         ]).start();
     }, []);
 
-    const isAllDone = onboardingFinished;
-    const daysLeft = 7 - dayNumber;
+    const daysLeft = totalDays - dayNumber;
 
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#9788FB" />
 
+            {/* Top Section */}
             <View style={styles.topSection}>
-                <Animated.View style={[
-                    styles.iconCircle,
-                    { transform: [{ scale: scaleAnim }] }
-                ]}>
-                    <Text style={styles.iconText}>
-                        {isAllDone ? '🎓' : '✅'}
-                    </Text>
+                <Animated.View style={[styles.iconCircle, { transform: [{ scale: scaleAnim }] }]}>
+                    <Text style={styles.iconText}>{onboardingFinished ? '🎓' : '✅'}</Text>
                 </Animated.View>
 
                 <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
                     <Text style={styles.titleText}>
-                        {isAllDone ? 'Onboarding Complete!' : `Day ${dayNumber} Done!`}
+                        {onboardingFinished ? 'All Tests Done!' : `Test ${dayNumber} Complete!`}
                     </Text>
                     <Text style={styles.subtitleText}>
-                        {isAllDone
-                            ? 'Your personalized roadmap is ready.'
-                            : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left in your assessment`
-                        }
+                        {onboardingFinished
+                            ? 'Your AI roadmap is being generated now.'
+                            : `${daysLeft} test${daysLeft !== 1 ? 's' : ''} remaining`}
                     </Text>
                 </Animated.View>
             </View>
 
+            {/* Stats Card */}
             <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
 
                 {/* Stats Row */}
                 <View style={styles.statsRow}>
                     <View style={styles.statBox}>
-                        <Text style={styles.statValue}>{dayNumber}/7</Text>
-                        <Text style={styles.statLabel}>Days Done</Text>
+                        <Text style={styles.statValue}>{dayNumber}/{totalDays}</Text>
+                        <Text style={styles.statLabel}>Tests Done</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statBox}>
@@ -69,23 +56,22 @@ export default function TestResult({ navigation, route }) {
                     <View style={styles.statDivider} />
                     <View style={styles.statBox}>
                         <Text style={styles.statValue}>{totalQuestions - mcqCount}</Text>
-                        <Text style={styles.statLabel}>Descriptive</Text>
+                        <Text style={styles.statLabel}>Written</Text>
                     </View>
                 </View>
 
                 {/* Message */}
                 <View style={styles.messageBox}>
                     <Text style={styles.messageText}>
-                        {isAllDone
-                            ? '🚀 Your AI has analyzed 7 days of responses and built a custom roadmap just for you!'
-                            : `📊 Great work! Come back tomorrow for Day ${dayNumber + 1}. The AI is tracking your patterns.`
-                        }
+                        {onboardingFinished
+                            ? '🚀 The AI has analyzed your responses across all 3 tests and is building your custom roadmap!'
+                            : `📊 Great work! Come back for Test ${dayNumber + 1}. The AI is learning your patterns.`}
                     </Text>
                 </View>
 
-                {/* Progress dots */}
+                {/* Progress Dots — 3 total */}
                 <View style={styles.dotsRow}>
-                    {[1, 2, 3, 4, 5, 6, 7].map(day => (
+                    {[1, 2, 3].map(day => (
                         <View
                             key={day}
                             style={[
@@ -96,84 +82,58 @@ export default function TestResult({ navigation, route }) {
                         />
                     ))}
                 </View>
-                <Text style={styles.dotsLabel}>7-Day Assessment Progress</Text>
+                <Text style={styles.dotsLabel}>3-Test Assessment Progress</Text>
 
             </Animated.View>
 
-            {/* CTA Button */}
-            <TouchableOpacity
-                style={styles.homeBtn}
-                onPress={() => navigation.replace('Main')}
-                activeOpacity={0.85}
-            >
-                <Text style={styles.homeBtnText}>
-                    {isAllDone ? 'View My Roadmap →' : 'Back to Home'}
-                </Text>
-            </TouchableOpacity>
+            {/* CTA */}
+            <Animated.View style={{ opacity: fadeAnim, width: '100%' }}>
+                <TouchableOpacity
+                    style={styles.homeBtn}
+                    onPress={() => navigation.replace('Main')}
+                    activeOpacity={0.85}
+                >
+                    <Text style={styles.homeBtnText}>
+                        {onboardingFinished ? 'View My Roadmap →' : 'Back to Home'}
+                    </Text>
+                </TouchableOpacity>
+
+                {!onboardingFinished && (
+                    <Text style={styles.reminderText}>
+                        Complete all {totalDays} tests to unlock your personalized roadmap
+                    </Text>
+                )}
+            </Animated.View>
 
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1, backgroundColor: '#9788FB',
-        alignItems: 'center', justifyContent: 'space-between',
-        paddingVertical: 40, paddingHorizontal: 20
-    },
-    topSection: { alignItems: 'center', gap: 20, marginTop: 20 },
-    iconCircle: {
-        width: 120, height: 120, borderRadius: 60,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        justifyContent: 'center', alignItems: 'center'
-    },
-    iconText: { fontSize: 56 },
-    titleText: {
-        fontSize: 28, fontWeight: '900', color: '#FFF',
-        textAlign: 'center', marginTop: 10
-    },
-    subtitleText: {
-        fontSize: 15, color: 'rgba(255,255,255,0.8)',
-        textAlign: 'center', marginTop: 6
-    },
+    container: { flex: 1, backgroundColor: '#9788FB', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 40, paddingHorizontal: 20 },
+    topSection: { alignItems: 'center', gap: 16, marginTop: 10 },
+    iconCircle: { width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+    iconText: { fontSize: 52 },
+    titleText: { fontSize: 26, fontWeight: '900', color: '#FFF', textAlign: 'center', marginTop: 10 },
+    subtitleText: { fontSize: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 4 },
 
-    card: {
-        backgroundColor: '#FFF', borderRadius: 28,
-        padding: 24, width: '100%', elevation: 10,
-        shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20
-    },
-    statsRow: {
-        flexDirection: 'row', justifyContent: 'space-around',
-        marginBottom: 24, paddingBottom: 24,
-        borderBottomWidth: 1, borderBottomColor: '#F1F5F9'
-    },
+    card: { backgroundColor: '#FFF', borderRadius: 28, padding: 24, width: '100%', elevation: 10 },
+    statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     statBox: { alignItems: 'center', flex: 1 },
-    statValue: { fontSize: 28, fontWeight: '900', color: '#9788FB' },
-    statLabel: { fontSize: 12, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
+    statValue: { fontSize: 26, fontWeight: '900', color: '#9788FB' },
+    statLabel: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
     statDivider: { width: 1, backgroundColor: '#F1F5F9' },
 
-    messageBox: {
-        backgroundColor: '#F8F9FE', borderRadius: 16,
-        padding: 16, marginBottom: 24
-    },
-    messageText: { fontSize: 14, color: '#475569', lineHeight: 22, textAlign: 'center' },
+    messageBox: { backgroundColor: '#F8F9FE', borderRadius: 16, padding: 14, marginBottom: 20 },
+    messageText: { fontSize: 13, color: '#475569', lineHeight: 21, textAlign: 'center' },
 
-    dotsRow: {
-        flexDirection: 'row', justifyContent: 'center',
-        gap: 8, marginBottom: 8
-    },
-    dot: {
-        width: 10, height: 10, borderRadius: 5,
-        backgroundColor: '#E2E8F0'
-    },
+    dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 8 },
+    dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#E2E8F0' },
     dotFilled: { backgroundColor: '#C4B5FD' },
-    dotCurrent: { backgroundColor: '#9788FB', width: 24, borderRadius: 5 },
+    dotCurrent: { backgroundColor: '#9788FB', width: 28, borderRadius: 6 },
     dotsLabel: { textAlign: 'center', fontSize: 11, color: '#94A3B8', fontWeight: '600' },
 
-    homeBtn: {
-        backgroundColor: '#FFF', width: '100%', paddingVertical: 18,
-        borderRadius: 20, alignItems: 'center',
-        elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10
-    },
-    homeBtnText: { color: '#9788FB', fontWeight: '900', fontSize: 18 },
+    homeBtn: { backgroundColor: '#FFF', width: '100%', paddingVertical: 18, borderRadius: 20, alignItems: 'center', elevation: 5 },
+    homeBtnText: { color: '#9788FB', fontWeight: '900', fontSize: 17 },
+    reminderText: { textAlign: 'center', color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 12 },
 });
