@@ -41,7 +41,8 @@ const VerifyAccount = ({ navigation, route }) => {
             // --- FIX ENDS HERE ---
 
             if (res.ok) {
-                navigation.navigate("ResetPassword", { email, otp: otpCode });
+                // navigation.navigate("ResetPassword", { email, otp: otpCode });
+                navigation.navigate("Login",{email, otp: otpCode})
             } else {
                 Alert.alert("Error", data.message || "Verification failed");
             }

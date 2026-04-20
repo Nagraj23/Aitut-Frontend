@@ -32,6 +32,11 @@ import RegisterStudentScreen from "./Screens/TPO/RegisterStudentScreen";
 import TPOProfileScreen from './Screens/TPO/TPOProfile';
 import ProfileScreen from "./Screens/Profile";
 import BranchStudentList from "./Screens/TPO/BranchWiseStudent";
+// Add these imports in AppNavigator.js:
+import AddBranch from './Screens/TPO/AddBranch';
+import AddStudent from './Screens/TPO/AddStudent';
+import BranchReport from './Screens/TPO/BranchReport';
+import TPOPersonalInfo from './Screens/TPO/TPOPersonalInfo';
 
 const Stack = createNativeStackNavigator();
 
@@ -71,6 +76,11 @@ const AppNavigator = () => {
                         <Stack.Screen name="BranchStudents" component={BranchStudentList} />
                         {/* Screens TPO can navigate to FROM the dashboard */}
                         <Stack.Screen name="RegisterStudent" component={RegisterStudentScreen} />
+                        <Stack.Screen name="AddBranch" component={AddBranch} />
+                        <Stack.Screen name="AddStudent" component={AddStudent} />
+                        <Stack.Screen name="BranchReport" component={BranchReport} />
+                        <Stack.Screen name="TPOPersonalInfo" component={TPOPersonalInfo} />
+                        <Stack.Screen name="EditBasicInfo" component={basicEdit} />
                         {/* Add the Branch Detail screen here so the card click works */}
                         {/*<Stack.Screen name="BranchStudentList" component={BranchStudentListScreen} />*/}
                     </>

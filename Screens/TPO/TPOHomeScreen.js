@@ -1,334 +1,296 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar
+    View, Text, StyleSheet, ScrollView,
+    TouchableOpacity, StatusBar, ActivityIndicator,
+    Alert, RefreshControl
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
-const TPOHomeScreen = ({ navigation }) => {
+export default function TPOHomeScreen({ navigation }) {
+    const [branches, setBranches] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [user, setUser] = useState(null);
 
-  const branchStats = [
-    {
-      id: 1,
-      branch: "CSE",
-      emoji: "💻",
-      placed: 45,
-      total: 60,
-      color: '#6C5CE7',
-      topStudents: ["Riya Mehta", "Sneha Joshi", "Kiran More"]
-    },
-    {
-      id: 2,
-      branch: "IT",
-      emoji: "📱",
-      placed: 38,
-      total: 50,
-      color: '#00B894',
-      topStudents: ["Rahul Sharma", "Rohan Deshmukh", "Arya Sharma"]
-    },
-    {
-      id: 3,
-      branch: "ENTC",
-      emoji: "📡",
-      placed: 30,
-      total: 55,
-      color: '#FDCB6E',
-      topStudents: ["Priya Singh", "Pooja Kale", "Siddharth N."]
-    },
-    {
-      id: 4,
-      branch: "MECH",
-      emoji: "⚙️",
-      placed: 25,
-      total: 65,
-      color: '#E17055',
-      topStudents: ["Amit Patil", "Vikram Shinde", "Suresh K."]
-    }
-  ];
+    useFocusEffect(useCallback(() => {
+        loadData();
+    }, []));
 
-  const renderBigBranchCard = (item) => {
-    const progress = Math.round((item.placed / item.total) * 100);
+    const loadData = async (isRefresh = false) => {
+        if (isRefresh) setRefreshing(true);
+        else setLoading(true);
+
+        try {
+            const details = await AsyncStorage.getItem('userDetails');
+            if (details) setUser(JSON.parse(details));
+
+            const stored = await AsyncStorage.getItem('tpo_branches');
+            setBranches(stored ? JSON.parse(stored) : []);
+        } catch (e) {
+            console.log('TPO load error:', e);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
+
+    const handleDeleteBranch = (branchId, branchName) => {
+        Alert.alert(
+            'Delete Branch',
+            `Remove ${branchName} from dashboard?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete', style: 'destructive',
+                    onPress: async () => {
+                        const updated = branches.filter(b => b.id !== branchId);
+                        await AsyncStorage.setItem('tpo_branches', JSON.stringify(updated));
+                        setBranches(updated);
+                    }
+                }
+            ]
+        );
+    };
+
+    const renderBranchCard = (item) => {
+        const studentCount = item.students?.length || 0;
+        const placed = item.students?.filter(s => s.status === 'Placed').length || 0;
+        const progress = item.total > 0 ? Math.round((placed / item.total) * 100) : 0;
+
+        return (
+            <TouchableOpacity
+                key={item.id}
+                style={styles.branchCard}
+                activeOpacity={0.88}
+                onPress={() => navigation.navigate('BranchStudents', { branchId: item.id })}
+                onLongPress={() => handleDeleteBranch(item.id, item.short)}
+            >
+                {/* Card Header */}
+                <View style={styles.cardHeader}>
+                    <View style={[styles.emojiBox, { backgroundColor: item.color + '18' }]}>
+                        <Text style={{ fontSize: 26 }}>{item.emoji}</Text>
+                    </View>
+                    <View style={styles.cardHeaderText}>
+                        <Text style={styles.branchName}>{item.short} Engineering</Text>
+                        <Text style={styles.branchFullName}>{item.name}</Text>
+                    </View>
+                    <View style={[styles.statusPill, { backgroundColor: item.color + '18' }]}>
+                        <Text style={[styles.statusPillText, { color: item.color }]}>Active</Text>
+                    </View>
+                </View>
+
+                {/* Stats Row */}
+                <View style={styles.statsRow}>
+                    <View style={styles.statItem}>
+                        <Text style={[styles.statBig, { color: item.color }]}>{studentCount}</Text>
+                        <Text style={styles.statSub}>Added</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statBig}>{item.total}</Text>
+                        <Text style={styles.statSub}>Total</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statBig}>{placed}</Text>
+                        <Text style={styles.statSub}>Placed</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                        <Text style={[styles.statBig, { color: '#2D3436' }]}>{progress}%</Text>
+                        <Text style={styles.statSub}>Success</Text>
+                    </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressBg}>
+                    <View style={[styles.progressFill, {
+                        width: `${progress}%`,
+                        backgroundColor: item.color
+                    }]} />
+                </View>
+
+                <Text style={styles.tapHint}>Tap to view students • Long press to delete</Text>
+            </TouchableOpacity>
+        );
+    };
 
     return (
-        <TouchableOpacity
-            key={item.id}
-            style={styles.bigCard}
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate("BranchStudents", { branch: item.branch })}
-        >
-          {/* Top Header Row */}
-          <View style={styles.cardHeader}>
-            <View style={[styles.emojiContainer, { backgroundColor: item.color + '15' }]}>
-              <Text style={{ fontSize: 24 }}>{item.emoji}</Text>
-            </View>
-            <View style={styles.headerInfo}>
-              <Text style={styles.bigBranchName}>{item.branch} Engineering</Text>
-              <Text style={styles.statusBadge}>In Progress</Text>
-            </View>
-            <Icon name="chevron-right" size={28} color="#CCC" />
-          </View>
+        <View style={styles.container}>
+            <StatusBar barStyle="dark-content" backgroundColor="#F3F4F9" />
 
-          {/* Major Stats Row */}
-          <View style={styles.mainStatsRow}>
-            <View style={styles.statBox}>
-              <Text style={[styles.hugeStat, { color: item.color }]}>{item.placed}</Text>
-              <Text style={styles.statSub}>Placed</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={styles.hugeStat}>{item.total}</Text>
-              <Text style={styles.statSub}>Total Students</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={[styles.hugeStat, { color: '#2D3436' }]}>{progress}%</Text>
-              <Text style={styles.statSub}>Success</Text>
-            </View>
-          </View>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} colors={['#6C5CE7']} />
+                }
+            >
+                {/* TPO Header */}
+                <View style={styles.tpoHeader}>
+                    <View style={styles.avatarCircle}>
+                        <Text style={styles.avatarText}>
+                            {user?.name?.charAt(0)?.toUpperCase() || 'T'}
+                        </Text>
+                    </View>
+                    <View style={styles.headerText}>
+                        <Text style={styles.greeting}>Welcome back,</Text>
+                        <Text style={styles.tpoName}>{user?.name || 'Placement Officer'}</Text>
+                        <Text style={styles.tpoRole}>
+                            {user?.college || user?.university || 'TPO Dashboard'}
+                        </Text>
+                    </View>
+                </View>
 
-          {/* Top 3 Students Preview */}
-          <View style={styles.topStudentsContainer}>
-            <Text style={styles.topStudentsTitle}>⭐ Top Performers</Text>
-            <View style={styles.studentPills}>
-              {item.topStudents.map((name, idx) => (
-                  <View key={idx} style={styles.pill}>
-                    <Text style={styles.pillText}>{name.split(' ')[0]}</Text>
-                  </View>
-              ))}
-            </View>
-          </View>
+                {/* Summary Strip */}
+                <View style={styles.summaryStrip}>
+                    <View style={styles.summaryItem}>
+                        <Text style={styles.summaryValue}>{branches.length}</Text>
+                        <Text style={styles.summarySub}>Branches</Text>
+                    </View>
+                    <View style={styles.summaryDivider} />
+                    <View style={styles.summaryItem}>
+                        <Text style={styles.summaryValue}>
+                            {branches.reduce((acc, b) => acc + (b.students?.length || 0), 0)}
+                        </Text>
+                        <Text style={styles.summarySub}>Students</Text>
+                    </View>
+                    <View style={styles.summaryDivider} />
+                    <View style={styles.summaryItem}>
+                        <Text style={styles.summaryValue}>
+                            {branches.reduce((acc, b) =>
+                                acc + (b.students?.filter(s => s.status === 'Placed').length || 0), 0)}
+                        </Text>
+                        <Text style={styles.summarySub}>Placed</Text>
+                    </View>
+                </View>
 
-          {/* Decorative Progress Bar at Bottom of Card */}
-          <View style={styles.cardProgressBarBg}>
-            <View style={[styles.cardProgressBarFill, { width: `${progress}%`, backgroundColor: item.color }]} />
-          </View>
-        </TouchableOpacity>
+                {/* Section Header */}
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Branch Overview</Text>
+                    <TouchableOpacity
+                        style={styles.addBranchBtn}
+                        onPress={() => navigation.navigate('AddBranch')}
+                    >
+                        <Text style={styles.addBranchBtnText}>+ Add Branch</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Branch Cards */}
+                <View style={styles.cardsContainer}>
+                    {loading ? (
+                        <ActivityIndicator size="large" color="#6C5CE7" style={{ marginTop: 40 }} />
+                    ) : branches.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyEmoji}>🏫</Text>
+                            <Text style={styles.emptyTitle}>No Branches Yet</Text>
+                            <Text style={styles.emptySubtitle}>
+                                Tap "Add Branch" to start tracking your departments.
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.emptyBtn}
+                                onPress={() => navigation.navigate('AddBranch')}
+                            >
+                                <Text style={styles.emptyBtnText}>Add First Branch →</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        branches.map(renderBranchCard)
+                    )}
+                </View>
+
+                <View style={{ height: 100 }} />
+            </ScrollView>
+        </View>
     );
-  };
-
-  return (
-      <View style={styles.container}>
-        <StatusBar barStyle="dark-content" />
-
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-          {/* TPO Info Header */}
-          <View style={styles.tpoHeader}>
-            <View style={styles.profileCircle}>
-              <Icon name="account-circle" size={64} color="#9788FB" />
-            </View>
-            <View style={styles.tpoTextContent}>
-              <Text style={styles.tpoGreeting}>Welcome back,</Text>
-              <Text style={styles.tpoName}>Prof. M. K. Naral</Text>
-              <Text style={styles.tpoRole}>TPO • BMIT Solapur</Text>
-            </View>
-          </View>
-
-          {/* Section Header */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Branch Overviews</Text>
-            <TouchableOpacity>
-              <Text style={styles.viewAllText}>View Reports</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Large Branch Cards */}
-          <View style={styles.listContainer}>
-            {branchStats.map((item) => renderBigBranchCard(item))}
-          </View>
-
-        </ScrollView>
-
-
-      </View>
-  );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F4F9'
-  },
-  scrollContent: {
-    paddingBottom: 110
-  },
-  tpoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 25,
-    paddingTop: 60,
-    paddingBottom: 30,
-    backgroundColor: '#FFF',
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-  },
-  tpoTextContent: {
-    marginLeft: 15
-  },
-  tpoGreeting: {
-    fontSize: 14,
-    color: '#888'
-  },
-  tpoName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1A1A1A'
-  },
-  tpoRole: {
-    fontSize: 12,
-    color: '#9788FB',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    marginTop: 2
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 25,
-    marginTop: 25,
-    marginBottom: 15
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2D3436'
-  },
-  viewAllText: {
-    color: '#9788FB',
-    fontWeight: 'bold'
-  },
-  listContainer: {
-    paddingHorizontal: 20
-  },
-  bigCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 28,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 5
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20
-  },
-  emojiContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  headerInfo: {
-    flex: 1,
-    marginLeft: 12
-  },
-  bigBranchName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2D3436'
-  },
-  statusBadge: {
-    fontSize: 10,
-    color: '#00B894',
-    fontWeight: 'bold',
-    marginTop: 2
-  },
-  mainStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8F9FD',
-    padding: 15,
-    borderRadius: 20,
-    marginBottom: 20
-  },
-  statBox: {
-    alignItems: 'center',
-    flex: 1
-  },
-  hugeStat: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#1A1A1A'
-  },
-  statSub: {
-    fontSize: 10,
-    color: '#A0A0A0',
-    fontWeight: 'bold',
-    marginTop: 4,
-    textTransform: 'uppercase'
-  },
-  statDivider: {
-    width: 1,
-    height: '70%',
-    backgroundColor: '#DDD',
-    alignSelf: 'center'
-  },
-  topStudentsContainer: {
-    marginBottom: 10
-  },
-  topStudentsTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#666',
-    marginBottom: 10
-  },
-  studentPills: {
-    flexDirection: 'row'
-  },
-  pill: {
-    backgroundColor: '#F0F0F0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    marginRight: 8
-  },
-  pillText: {
-    fontSize: 12,
-    color: '#444',
-    fontWeight: '600'
-  },
-  cardProgressBarBg: {
-    height: 6,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 3,
-    marginTop: 15
-  },
-  cardProgressBarFill: {
-    height: 6,
-    borderRadius: 3
-  },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#FFF',
-    paddingVertical: 12,
-    paddingBottom: 25,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    elevation: 20
-  },
-  tabItem: {
-    alignItems: 'center'
-  },
-  tabText: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 4
-  }
-});
+    container: { flex: 1, backgroundColor: '#F3F4F9' },
 
-export default TPOHomeScreen;
+    tpoHeader: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 24, paddingTop: 60, paddingBottom: 24,
+        backgroundColor: '#FFF',
+        borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
+        elevation: 3,
+    },
+    avatarCircle: {
+        width: 52, height: 52, borderRadius: 26,
+        backgroundColor: '#6C5CE7', justifyContent: 'center',
+        alignItems: 'center', marginRight: 14,
+    },
+    avatarText: { fontSize: 22, fontWeight: '900', color: '#FFF' },
+    headerText: { flex: 1 },
+    greeting: { fontSize: 13, color: '#94A3B8' },
+    tpoName: { fontSize: 20, fontWeight: '800', color: '#1A1A1A' },
+    tpoRole: { fontSize: 11, color: '#6C5CE7', fontWeight: '700', marginTop: 2 },
+
+    summaryStrip: {
+        flexDirection: 'row', backgroundColor: '#FFF',
+        marginHorizontal: 20, marginTop: 16, borderRadius: 18,
+        padding: 16, elevation: 2,
+    },
+    summaryItem: { flex: 1, alignItems: 'center' },
+    summaryValue: { fontSize: 22, fontWeight: '900', color: '#1A1A1A' },
+    summarySub: { fontSize: 11, color: '#94A3B8', fontWeight: '600', marginTop: 3 },
+    summaryDivider: { width: 1, backgroundColor: '#E2E8F0' },
+
+    sectionHeader: {
+        flexDirection: 'row', justifyContent: 'space-between',
+        alignItems: 'center', paddingHorizontal: 20,
+        marginTop: 24, marginBottom: 14,
+    },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1A1A1A' },
+    addBranchBtn: {
+        backgroundColor: '#6C5CE7', paddingHorizontal: 16,
+        paddingVertical: 8, borderRadius: 20,
+    },
+    addBranchBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+
+    cardsContainer: { paddingHorizontal: 20 },
+
+    branchCard: {
+        backgroundColor: '#FFF', borderRadius: 24, padding: 20,
+        marginBottom: 16, elevation: 4,
+        shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10,
+    },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+    emojiBox: {
+        width: 52, height: 52, borderRadius: 16,
+        justifyContent: 'center', alignItems: 'center', marginRight: 14,
+    },
+    cardHeaderText: { flex: 1 },
+    branchName: { fontSize: 17, fontWeight: '800', color: '#1A1A1A' },
+    branchFullName: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+    statusPill: {
+        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
+    },
+    statusPillText: { fontSize: 10, fontWeight: '800' },
+
+    statsRow: {
+        flexDirection: 'row', backgroundColor: '#F8F9FD',
+        borderRadius: 16, padding: 14, marginBottom: 14,
+    },
+    statItem: { flex: 1, alignItems: 'center' },
+    statBig: { fontSize: 20, fontWeight: '900', color: '#1A1A1A' },
+    statSub: { fontSize: 9, color: '#A0A0A0', fontWeight: '700', marginTop: 4, textTransform: 'uppercase' },
+    statDivider: { width: 1, backgroundColor: '#E2E8F0' },
+
+    progressBg: { height: 6, backgroundColor: '#F0F0F0', borderRadius: 3 },
+    progressFill: { height: 6, borderRadius: 3 },
+    tapHint: { fontSize: 10, color: '#CBD5E1', marginTop: 10, textAlign: 'center' },
+
+    emptyState: {
+        alignItems: 'center', paddingVertical: 50,
+        backgroundColor: '#FFF', borderRadius: 24, marginTop: 10, padding: 30,
+    },
+    emptyEmoji: { fontSize: 52, marginBottom: 16 },
+    emptyTitle: { fontSize: 20, fontWeight: '800', color: '#1A1A1A' },
+    emptySubtitle: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 8, lineHeight: 20 },
+    emptyBtn: {
+        backgroundColor: '#6C5CE7', marginTop: 24,
+        paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16,
+    },
+    emptyBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+});
