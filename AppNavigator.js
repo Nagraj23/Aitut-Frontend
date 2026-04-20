@@ -78,8 +78,7 @@ const AppNavigator = () => {
                     /* 👨‍🎓 STUDENT STACK */
                     <>
                         <Stack.Screen name="Main" component={AppTabs} />
-
-                        {/* Student specific sub-pages */}
+                        <Stack.Screen name="Teach" component={TeachScreen} />
                         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
                         <Stack.Screen name="DiagnosticTest" component={DiagnosticTest} />
                         <Stack.Screen name="Roadmap" component={RoadmapScreen} />

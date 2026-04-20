@@ -1,108 +1,93 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
     ScrollView, Dimensions, ActivityIndicator, Alert
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../context/AuthContext';
-import { useContext } from 'react';
+import { UserContext } from '../context/UserContext'; // Added UserContext
 import { useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
 import { AUTH_URL } from '../Constants/Api';
 
 const { width } = Dimensions.get('window');
 
-const checkProfileCompletion = (user) => {
-    // Spring returns phone_no in snake_case from Users entity occasionally
-    const phone = user?.phoneNo || user?.phone_no;
-    
-    // Basic Info Check
-    const basicDone = !!(user?.name && phone && user?.gender);
-    
-    // Academic Info Check
-    // Modified to not strictly require department, as it can be null in the backend (per the logs)
-    const academicDone = !!(
-        user?.university &&
-        (user?.targetCourse || user?.target_course)
-    );
-    
-    const allDone = basicDone && academicDone;
-    return { basicDone, academicDone, allDone };
-};
-
 const ProfileScreen = ({ navigation }) => {
-    const { signOut } = useContext(AuthContext);
+    // 1. Pull data/methods from Contexts
+    const { signOut, userToken } = useContext(AuthContext);
+    const { roadmap } = useContext(UserContext);
+
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [completion, setCompletion] = useState({ basicDone: false, academicDone: false, allDone: false });
 
-    // Reload every time the screen comes into focus
-    useFocusEffect(useCallback(() => {
-        loadUserData();
-    }, []));
+    // 2. Helper function (kept inside or moved to a utils file)
+    const checkProfileCompletion = (userData) => {
+        const phone = userData?.phoneNo || userData?.phone_no;
+        const basicDone = !!(userData?.name && phone && userData?.gender);
+        const academicDone = !!(userData?.university && (userData?.targetCourse || userData?.target_course));
+        const allDone = basicDone && academicDone;
+        return { basicDone, academicDone, allDone };
+    };
 
+    // 3. Optimized Data Loading
     const loadUserData = async () => {
-        setLoading(true);
         try {
-            // First load from local storage (fast)
+            // Step A: Load from Cache immediately
             const local = await AsyncStorage.getItem('userDetails');
             if (local) {
                 const parsed = JSON.parse(local);
                 setUser(parsed);
                 setCompletion(checkProfileCompletion(parsed));
+                setLoading(false); // Stop loading early if cache exists
             }
 
-            // Then fetch fresh data from backend (accurate)
-            const token = await AsyncStorage.getItem('accessToken');
+            // Step B: Background Refresh (only if we have a token)
+            if (!userToken) return;
+
+            // We need the ID from the local user to hit the specific endpoint
             const localUser = local ? JSON.parse(local) : null;
-            if (!localUser?.id || !token) return;
+            if (!localUser?.id) return;
 
             const response = await axios.get(
                 `${AUTH_URL}/user/${localUser.id}`,
-                { headers: { Authorization: `Bearer ${token}` } }
+                { headers: { Authorization: `Bearer ${userToken}` } }
             );
 
             if (response.data) {
                 const fresh = response.data;
-                const userDetails = JSON.stringify(fresh);
-                console.log('Fetched user details:', userDetails);
                 setUser(fresh);
                 setCompletion(checkProfileCompletion(fresh));
-                // Update local cache
-                await AsyncStorage.setItem('userDetails', userDetails);
+                await AsyncStorage.setItem('userDetails', JSON.stringify(fresh));
             }
         } catch (e) {
-            console.log('Profile load error:', e.message);
+            console.log('Profile background sync error:', e.message);
         } finally {
             setLoading(false);
         }
     };
 
+    useFocusEffect(
+        useCallback(() => {
+            loadUserData();
+        }, [])
+    );
+
     const handleSignOut = () => {
-        Alert.alert(
-            'Sign Out',
-            'Are you sure you want to logout?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Logout', style: 'destructive', onPress: signOut }
-            ]
-        );
+        Alert.alert('Sign Out', 'Are you sure?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', style: 'destructive', onPress: signOut }
+        ]);
     };
 
+    // UI Helpers
     const getInitials = (name) => {
         if (!name) return 'U';
         const parts = name.trim().split(' ');
-        return parts.length >= 2
-            ? (parts[0][0] + parts[1][0]).toUpperCase()
-            : parts[0][0].toUpperCase();
+        return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0][0].toUpperCase();
     };
 
-    const getRoleColor = (role) => {
-        const colors = { STUDENT: '#9788FB', TEACHER: '#3B82F6', INDIVIDUAL: '#10B981', TPO: '#F97316' };
-        return colors[role] || '#9788FB';
-    };
-
-    if (loading) {
+    if (loading && !user) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#9788FB" />
@@ -110,62 +95,36 @@ const ProfileScreen = ({ navigation }) => {
         );
     }
 
-    const roleColor = getRoleColor(user?.role);
-    
-    // Dynamic progress calculation based on the new 30% / 100% requirement
+    const roleColor = user?.role === 'TEACHER' ? '#3B82F6' : user?.role === 'TPO' ? '#F97316' : '#9788FB';
     const profileProgress = (completion.basicDone ? 30 : 0) + (completion.academicDone ? 70 : 0);
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-
-            {/* ── Hero Header ── */}
+            {/* Hero Header */}
             <View style={[styles.heroSection, { backgroundColor: roleColor }]}>
-                {/* Avatar */}
                 <View style={styles.avatarRing}>
                     <View style={[styles.avatar, { borderColor: roleColor }]}>
-                        <Text style={[styles.avatarText, { color: roleColor }]}>
-                            {getInitials(user?.name)}
-                        </Text>
+                        <Text style={[styles.avatarText, { color: roleColor }]}>{getInitials(user?.name)}</Text>
                     </View>
                 </View>
-
-                <Text style={styles.userName}>{user?.name || 'Your Name'}</Text>
+                <Text style={styles.userName}>{user?.name || 'User'}</Text>
                 <Text style={styles.userEmail}>{user?.email || ''}</Text>
 
-                {/* Role Badge */}
                 <View style={styles.roleBadge}>
-                    <Text style={[styles.roleBadgeText, { color: roleColor }]}>
-                        {user?.role || 'STUDENT'}
-                    </Text>
+                    <Text style={[styles.roleBadgeText, { color: roleColor }]}>{user?.role || 'STUDENT'}</Text>
                 </View>
 
-                {/* Completion Status */}
-                <View style={[
-                    styles.completionBadge,
-                    { backgroundColor: completion.allDone ? 'rgba(74,222,128,0.2)' : 'rgba(255,200,0,0.2)' }
-                ]}>
-                    <Text style={styles.completionBadgeText}>
-                        {completion.allDone ? '✅ Profile Complete' : '⚠️ Profile Incomplete'}
-                    </Text>
-                </View>
-
-                {/* Completion Bar */}
                 {!completion.allDone && (
                     <View style={styles.completionBarContainer}>
                         <View style={styles.completionBarBg}>
-                            <View style={[
-                                styles.completionBarFill,
-                                { width: `${profileProgress}%` }
-                            ]} />
+                            <View style={[styles.completionBarFill, { width: `${profileProgress}%` }]} />
                         </View>
-                        <Text style={styles.completionPercent}>
-                            {profileProgress}% complete
-                        </Text>
+                        <Text style={styles.completionPercent}>{profileProgress}% complete</Text>
                     </View>
                 )}
             </View>
 
-            {/* ── Info Preview Strip ── */}
+            {/* Info Strip */}
             {(user?.university || user?.department) && (
                 <View style={styles.infoStrip}>
                     {user?.university && (
@@ -174,23 +133,16 @@ const ProfileScreen = ({ navigation }) => {
                             <Text style={styles.infoChipText} numberOfLines={1}>{user.university}</Text>
                         </View>
                     )}
-                    {user?.department && (
-                        <View style={styles.infoChip}>
-                            <Text style={styles.infoChipIcon}>📚</Text>
-                            <Text style={styles.infoChipText} numberOfLines={1}>{user.department}</Text>
-                        </View>
-                    )}
                 </View>
             )}
 
-            {/* ── Profile Sections ── */}
             <View style={styles.sectionsContainer}>
                 <Text style={styles.sectionGroupLabel}>PROFILE SETTINGS</Text>
 
                 <ProfileMenuItem
                     icon="👤"
                     title="Basic Info"
-                    subtitle={completion.basicDone ? 'Name, phone & gender added' : 'Add your personal details'}
+                    subtitle={completion.basicDone ? 'Details updated' : 'Add personal details'}
                     status={completion.basicDone ? 'done' : 'pending'}
                     onPress={() => navigation.navigate('EditBasicInfo')}
                 />
@@ -198,7 +150,7 @@ const ProfileScreen = ({ navigation }) => {
                 <ProfileMenuItem
                     icon="🎓"
                     title="Academic Info"
-                    subtitle={completion.academicDone ? `${user?.targetCourse || 'Course'} · ${user?.university || ''}` : 'Add university & course details'}
+                    subtitle={completion.academicDone ? (user?.targetCourse || 'Course Set') : 'Add university details'}
                     status={completion.academicDone ? 'done' : 'pending'}
                     onPress={() => navigation.navigate('EditLearningInfo')}
                 />
@@ -208,58 +160,31 @@ const ProfileScreen = ({ navigation }) => {
                 <ProfileMenuItem
                     icon="🗺️"
                     title="My Roadmap"
-                    subtitle="View your AI learning path"
+                    subtitle={roadmap ? "View your progress" : "No roadmap generated"}
                     status="neutral"
                     onPress={() => navigation.navigate('Roadmap')}
                 />
 
-                {/* <ProfileMenuItem
-                    icon="📋"
-                    title="Take Diagnostic Test"
-                    subtitle="Unlock your personalized roadmap"
-                    status="neutral"
-                    onPress={() => {
-                        if (!completion.academicDone) {
-                            Alert.alert(
-                                'Academic Info Required',
-                                'Please complete your academic info first.',
-                                [{ text: 'Fill Now', onPress: () => navigation.navigate('EditLearningInfo') }]
-                            );
-                        } else {
-                            navigation.navigate('DiagnosticTest');
-                        }
-                    }}
-                /> */}
-
                 <Text style={[styles.sectionGroupLabel, { marginTop: 24 }]}>ACCOUNT</Text>
-
-                <TouchableOpacity style={styles.logoutItem} onPress={handleSignOut} activeOpacity={0.7}>
-                    <View style={styles.logoutIconBox}>
-                        <Text style={styles.menuIcon}>🚪</Text>
-                    </View>
+                <TouchableOpacity style={styles.logoutItem} onPress={handleSignOut}>
+                    <View style={styles.logoutIconBox}><Text style={styles.menuIcon}>🚪</Text></View>
                     <Text style={styles.logoutText}>Sign Out</Text>
-                    <Text style={styles.menuArrow}>→</Text>
                 </TouchableOpacity>
             </View>
-
-            <View style={{ height: 50 }} />
         </ScrollView>
     );
 };
 
-// Reusable menu item component
 const ProfileMenuItem = ({ icon, title, subtitle, status, onPress }) => {
     const statusColors = { done: '#4ADE80', pending: '#FBBF24', neutral: '#9788FB' };
     const statusIcons = { done: '✓', pending: '!', neutral: '→' };
 
     return (
-        <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
-            <View style={styles.menuIconBox}>
-                <Text style={styles.menuIcon}>{icon}</Text>
-            </View>
+        <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+            <View style={styles.menuIconBox}><Text style={styles.menuIcon}>{icon}</Text></View>
             <View style={styles.menuTextGroup}>
                 <Text style={styles.menuTitle}>{title}</Text>
-                <Text style={styles.menuSubtitle} numberOfLines={1}>{subtitle}</Text>
+                <Text style={styles.menuSubtitle}>{subtitle}</Text>
             </View>
             <View style={[styles.menuStatusDot, { backgroundColor: statusColors[status] }]}>
                 <Text style={styles.menuStatusIcon}>{statusIcons[status]}</Text>
@@ -267,6 +192,8 @@ const ProfileMenuItem = ({ icon, title, subtitle, status, onPress }) => {
         </TouchableOpacity>
     );
 };
+
+// ... (Styles remain the same as your original code)
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },
