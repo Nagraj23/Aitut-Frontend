@@ -1,195 +1,272 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useCallback, useContext } from 'react';
+import {
+    View, Text, StyleSheet, TouchableOpacity,
+    ScrollView, Alert, ActivityIndicator
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../../context/AuthContext';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useFocusEffect } from '@react-navigation/native';
+import axios from 'axios';
+import { AUTH_URL } from '../../Constants/Api';
 
-const { width } = Dimensions.get('window');
+const checkTPOCompletion = (user) => {
+    const hasBasic = !!(user?.name && (user?.phoneNo || user?.phone_no) && user?.gender);
+    const hasInstitution = !!(user?.college && user?.university);
+    return { hasBasic, hasInstitution, allDone: hasBasic && hasInstitution };
+};
 
-const TPOProfileScreen = ({ navigation }) => {
+export default function TPOProfile({ navigation }) {
     const { signOut } = useContext(AuthContext);
     const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [completion, setCompletion] = useState({ hasBasic: false, hasInstitution: false, allDone: false });
+    const [branchCount, setBranchCount] = useState(0);
+    const [studentCount, setStudentCount] = useState(0);
 
-    useEffect(() => {
-        const unsubscribe = navigation.addListener('focus', () => {
-            loadUserData();
-        });
-        return unsubscribe;
-    }, [navigation]);
+    useFocusEffect(useCallback(() => {
+        loadData();
+    }, []));
 
-    const loadUserData = async () => {
-        const details = await AsyncStorage.getItem('userDetails');
-        if (details) setUser(JSON.parse(details));
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const local = await AsyncStorage.getItem('userDetails');
+            if (local) {
+                const parsed = JSON.parse(local);
+                setUser(parsed);
+                setCompletion(checkTPOCompletion(parsed));
+            }
+
+            // Refresh from backend
+            const token = await AsyncStorage.getItem('accessToken');
+            if (local && token) {
+                const u = JSON.parse(local);
+                const res = await axios.get(`${AUTH_URL}/user/${u.id}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.data) {
+                    setUser(res.data);
+                    setCompletion(checkTPOCompletion(res.data));
+                    await AsyncStorage.setItem('userDetails', JSON.stringify(res.data));
+                }
+            }
+
+            // Branch stats
+            const stored = await AsyncStorage.getItem('tpo_branches');
+            if (stored) {
+                const branches = JSON.parse(stored);
+                setBranchCount(branches.length);
+                setStudentCount(branches.reduce((acc, b) => acc + (b.students?.length || 0), 0));
+            }
+        } catch (e) {
+            console.log('TPO profile load error:', e.message);
+        } finally {
+            setLoading(false);
+        }
     };
+
+    const handleSignOut = () => {
+        Alert.alert('Sign Out', 'Are you sure?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', style: 'destructive', onPress: signOut }
+        ]);
+    };
+
+    if (loading) {
+        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#6C5CE7" /></View>;
+    }
+
+    const completionPct = (completion.hasBasic ? 50 : 0) + (completion.hasInstitution ? 50 : 0);
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Header Section */}
-            <View style={styles.headerCard}>
-                <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarText}>{user?.name?.charAt(0) || 'T'}</Text>
-                </View>
-                <Text style={styles.userName}>{user?.name }</Text>
-                <Text style={styles.userRole}>ADMIN • PLACEMENT OFFICER</Text>
 
-                <View style={styles.badge}>
-                    <Text style={styles.badgeText}>✅ Verified Administrator</Text>
+            {/* Hero */}
+            <View style={styles.hero}>
+                <View style={styles.avatarRing}>
+                    <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>
+                            {user?.name?.charAt(0)?.toUpperCase() || 'T'}
+                        </Text>
+                    </View>
+                </View>
+                <Text style={styles.name}>{user?.name || 'Placement Officer'}</Text>
+                <Text style={styles.roleTag}>PLACEMENT OFFICER</Text>
+                {user?.college && <Text style={styles.institution}>{user.college}</Text>}
+
+                {/* Completion */}
+                <View style={[
+                    styles.completionBadge,
+                    { backgroundColor: completion.allDone ? 'rgba(0,184,148,0.2)' : 'rgba(255,200,0,0.2)' }
+                ]}>
+                    <Text style={styles.completionBadgeText}>
+                        {completion.allDone ? '✅ Profile Verified' : `⚠️ ${completionPct}% Complete`}
+                    </Text>
+                </View>
+
+                {!completion.allDone && (
+                    <View style={styles.progressBarContainer}>
+                        <View style={styles.progressBarBg}>
+                            <View style={[styles.progressBarFill, { width: `${completionPct}%` }]} />
+                        </View>
+                    </View>
+                )}
+            </View>
+
+            {/* Stats Strip */}
+            <View style={styles.statsStrip}>
+                <View style={styles.statsItem}>
+                    <Text style={styles.statsValue}>{branchCount}</Text>
+                    <Text style={styles.statsSub}>Branches</Text>
+                </View>
+                <View style={styles.statsDivider} />
+                <View style={styles.statsItem}>
+                    <Text style={styles.statsValue}>{studentCount}</Text>
+                    <Text style={styles.statsSub}>Students</Text>
+                </View>
+                <View style={styles.statsDivider} />
+                <View style={styles.statsItem}>
+                    <Text style={styles.statsValue}>{completion.allDone ? '✓' : '—'}</Text>
+                    <Text style={styles.statsSub}>Verified</Text>
                 </View>
             </View>
 
-            {/* Admin Grid Section */}
-            <View style={styles.gridContainer}>
-                <View style={styles.row}>
-                    {/* Combined Info Card */}
-                    <SquareCard
-                        label="Personal Info"
-                        subLabel="Admin & Contact Details"
-                        icon="👤"
-                        color="#6C5CE7"
-                        onPress={() => navigation.navigate('EditBasicInfo')}
-                    />
-                    {/* New Register Student Card */}
-                    <SquareCard
-                        label="Register Student"
-                        subLabel="Add new records to DB"
-                        icon="📝"
-                        color="#00B894"
-                        onPress={() => navigation.navigate('RegisterStudent')}
-                    />
-                </View>
+            {/* Menu */}
+            <View style={styles.menuContainer}>
+                <Text style={styles.menuGroupLabel}>PROFILE</Text>
 
-                <View style={styles.row}>
-                    <SquareCard
-                        label="Branch Reports"
-                        subLabel="Export placement data"
-                        icon="📊"
-                        color="#FDCB6E"
-                        onPress={() => navigation.navigate('Reports')}
-                    />
-                    <SquareCard
-                        label="Settings"
-                        subLabel="App & Notification Pref"
-                        icon="⚙️"
-                        color="#A0A0A0"
-                        onPress={() => navigation.navigate('Settings')}
-                    />
-                </View>
-            </View>
+                <MenuItem
+                    icon="👤"
+                    title="Personal Info"
+                    subtitle={completion.hasBasic ? 'Name, phone & gender added' : 'Complete your personal details'}
+                    status={completion.hasBasic ? 'done' : 'pending'}
+                    onPress={() => navigation.navigate('EditBasicInfo')}
+                />
+                <MenuItem
+                    icon="🏛️"
+                    title="Institution Details"
+                    subtitle={completion.hasInstitution ? `${user?.college} · ${user?.university}` : 'Add college & university'}
+                    status={completion.hasInstitution ? 'done' : 'pending'}
+                    onPress={() => navigation.navigate('TPOPersonalInfo')}
+                />
 
-            {/* Additional Management Actions */}
-            <View style={styles.actionSection}>
-                <TouchableOpacity style={styles.actionItem}>
-                    <Icon name="help-outline" size={22} color="#666" />
-                    <Text style={styles.actionText}>Help & Support</Text>
-                    <Icon name="chevron-right" size={22} color="#CCC" />
+                <Text style={[styles.menuGroupLabel, { marginTop: 20 }]}>MANAGEMENT</Text>
+
+                <MenuItem
+                    icon="📝"
+                    title="Register Student"
+                    subtitle="Invite a new student via email"
+                    status="neutral"
+                    onPress={() => navigation.navigate('AddStudent', {})}
+                />
+                <MenuItem
+                    icon="📊"
+                    title="Branch Reports"
+                    subtitle="View placement analytics"
+                    status="neutral"
+                    onPress={() => navigation.navigate('BranchReport')}
+                />
+
+                <Text style={[styles.menuGroupLabel, { marginTop: 20 }]}>ACCOUNT</Text>
+
+                <TouchableOpacity style={styles.logoutItem} onPress={handleSignOut}>
+                    <View style={styles.logoutIconBox}><Text style={{ fontSize: 20 }}>🚪</Text></View>
+                    <Text style={styles.logoutText}>Sign Out</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
-                    <Text style={styles.logoutText}>Sign Out from Portal</Text>
-                </TouchableOpacity>
             </View>
+
+            <View style={{ height: 50 }} />
         </ScrollView>
+    );
+}
+
+const MenuItem = ({ icon, title, subtitle, status, onPress }) => {
+    const colors = { done: '#00B894', pending: '#FDCB6E', neutral: '#6C5CE7' };
+    const icons = { done: '✓', pending: '!', neutral: '→' };
+    return (
+        <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+            <View style={styles.menuIconBox}><Text style={{ fontSize: 20 }}>{icon}</Text></View>
+            <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>{title}</Text>
+                <Text style={styles.menuSub} numberOfLines={1}>{subtitle}</Text>
+            </View>
+            <View style={[styles.menuDot, { backgroundColor: colors[status] }]}>
+                <Text style={styles.menuDotText}>{icons[status]}</Text>
+            </View>
+        </TouchableOpacity>
     );
 };
 
-const SquareCard = ({ label, subLabel, icon, onPress, color }) => (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
-        <View style={[styles.iconCircle, { backgroundColor: color + '15' }]}>
-            <Text style={styles.cardIcon}>{icon}</Text>
-        </View>
-        <Text style={styles.cardLabel}>{label}</Text>
-        <Text style={styles.cardSubLabel}>{subLabel}</Text>
-    </TouchableOpacity>
-);
-
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },
-    headerCard: {
-        backgroundColor: '#9788FB',
-        paddingTop: 60,
-        paddingBottom: 40,
-        alignItems: 'center',
-        borderBottomLeftRadius: 40,
-        borderBottomRightRadius: 40,
-        elevation: 10
-    },
-    avatarPlaceholder: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: '#FFF',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 15,
-        borderWidth: 4,
-        borderColor: 'rgba(255,255,255,0.3)'
-    },
-    avatarText: { fontSize: 42, fontWeight: 'bold', color: '#9788FB' },
-    userName: { color: '#FFF', fontSize: 24, fontWeight: '800' },
-    userRole: { color: 'rgba(255,255,255,0.8)', fontSize: 12, letterSpacing: 1.5, marginTop: 6, fontWeight: '600' },
-    badge: {
-        marginTop: 15,
-        backgroundColor: 'rgba(255,255,255,0.25)',
-        paddingHorizontal: 16,
-        paddingVertical: 6,
-        borderRadius: 20
-    },
-    badgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-    gridContainer: { padding: 18, marginTop: 10 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
-    card: {
-        backgroundColor: '#FFF',
-        width: (width / 2) - 27,
-        height: (width / 2) - 20,
-        borderRadius: 30,
-        padding: 20,
-        elevation: 4,
-        shadowColor: '#9788FB',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10
+    hero: {
+        backgroundColor: '#6C5CE7', paddingTop: 60, paddingBottom: 32,
+        alignItems: 'center', paddingHorizontal: 20,
+        borderBottomLeftRadius: 36, borderBottomRightRadius: 36,
     },
-    iconCircle: {
-        width: 45,
-        height: 45,
-        borderRadius: 15,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 15
+    avatarRing: {
+        width: 104, height: 104, borderRadius: 52,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center', alignItems: 'center', marginBottom: 14,
     },
-    cardIcon: { fontSize: 24 },
-    cardLabel: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
-    cardSubLabel: { fontSize: 11, color: '#94A3B8', marginTop: 4, lineHeight: 14 },
+    avatar: {
+        width: 88, height: 88, borderRadius: 44,
+        backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 36, fontWeight: '900', color: '#6C5CE7' },
+    name: { color: '#FFF', fontSize: 22, fontWeight: '800' },
+    roleTag: { color: 'rgba(255,255,255,0.75)', fontSize: 11, letterSpacing: 1.5, marginTop: 4, fontWeight: '700' },
+    institution: { color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 4 },
+    completionBadge: {
+        marginTop: 12, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 12,
+    },
+    completionBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+    progressBarContainer: { marginTop: 12, width: '70%' },
+    progressBarBg: { height: 5, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3 },
+    progressBarFill: { height: 5, backgroundColor: '#FFF', borderRadius: 3 },
 
-    actionSection: {
-        paddingHorizontal: 20,
-        paddingBottom: 40
+    statsStrip: {
+        flexDirection: 'row', backgroundColor: '#FFF',
+        marginHorizontal: 20, marginTop: 16, borderRadius: 18, padding: 16,
+        elevation: 3, transform: [{ translateY: -4 }],
     },
-    actionItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
-        padding: 15,
-        borderRadius: 15,
-        marginBottom: 20
+    statsItem: { flex: 1, alignItems: 'center' },
+    statsValue: { fontSize: 22, fontWeight: '900', color: '#1A1A1A' },
+    statsSub: { fontSize: 10, color: '#94A3B8', fontWeight: '600', marginTop: 3 },
+    statsDivider: { width: 1, backgroundColor: '#E2E8F0' },
+
+    menuContainer: { paddingHorizontal: 20, marginTop: 12 },
+    menuGroupLabel: {
+        fontSize: 10, fontWeight: '800', color: '#94A3B8',
+        letterSpacing: 1.2, marginBottom: 10, marginLeft: 4,
     },
-    actionText: {
-        flex: 1,
-        marginLeft: 15,
-        fontSize: 16,
-        color: '#444',
-        fontWeight: '500'
+    menuItem: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#FFF', borderRadius: 18, padding: 16, marginBottom: 10, elevation: 2,
     },
-    logoutBtn: {
-        padding: 18,
-        alignItems: 'center',
-        borderRadius: 20,
-        backgroundColor: '#FFF',
-        borderWidth: 1,
-        borderColor: '#FEE2E2'
+    menuIconBox: {
+        width: 44, height: 44, borderRadius: 13,
+        backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 14,
     },
-    logoutText: { color: '#EF4444', fontWeight: 'bold', fontSize: 16 }
+    menuText: { flex: 1 },
+    menuTitle: { fontSize: 15, fontWeight: '700', color: '#1A1A1A' },
+    menuSub: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+    menuDot: {
+        width: 26, height: 26, borderRadius: 13,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    menuDotText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
+
+    logoutItem: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#FFF2F2', borderRadius: 18, padding: 16,
+        borderWidth: 1, borderColor: '#FEE2E2',
+    },
+    logoutIconBox: {
+        width: 44, height: 44, borderRadius: 13,
+        backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center', marginRight: 14,
+    },
+    logoutText: { flex: 1, fontSize: 15, fontWeight: '700', color: '#EF4444' },
 });
-
-export default TPOProfileScreen;
