@@ -33,8 +33,8 @@ export default function DiagnosticTest({ navigation }) {
             const university = user?.university || 'General';
 
             const response = await axios.post(
-                `${ASSESSMENT_URL}/api/assessment/generate/`,
-                { domain, university },
+                `${ASSESSMENT_URL}/assessment/generate/`,
+                { domain },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
@@ -108,7 +108,7 @@ export default function DiagnosticTest({ navigation }) {
             }));
 
             const response = await axios.post(
-                `${ASSESSMENT_URL}/api/assessment/submit/`,
+                `${ASSESSMENT_URL}/assessment/submit/`,
                 { test_id: testData.test_id, answers: answersArray },
                 { headers: { Authorization: `Bearer ${token}` } }
             );

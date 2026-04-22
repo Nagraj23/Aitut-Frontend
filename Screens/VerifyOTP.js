@@ -1,141 +1,151 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ToastAndroid, Alert, SafeAreaView, ActivityIndicator } from "react-native";
-import { AUTH_URL } from "../Constants/Api";
-import OtpInput from "./OtpInput"; // Adjust path
+import React, { useState } from 'react';
+import {
+    View, Text, TouchableOpacity, StyleSheet,
+    Alert, KeyboardAvoidingView, Platform,
+    ScrollView, ActivityIndicator, StatusBar
+} from 'react-native';
+import { AUTH_URL } from '../Constants/Api';
+import OtpInput from './OtpInput';
 
-const VerifyAccount = ({ navigation, route }) => {
-    const { email,type } = route.params;
-    const [otp, setOtp] = useState(["", "", "", ""]);
+// Styled to match Login.js — purple brand header + white card
+export default function VerifyOTP({ navigation, route }) {
+    const { email, type } = route.params;
+    const [otp, setOtp] = useState(['', '', '', '']);
     const [loading, setLoading] = useState(false);
 
     const handleVerify = async () => {
-        const otpCode = otp.join("");
-        if (otpCode.length < 4) return Alert.alert("Error", "Enter 4-digit code");
+        const otpCode = otp.join('');
+        if (otpCode.length < 4) {
+            Alert.alert('Error', 'Please enter the 4-digit code.');
+            return;
+        }
 
         setLoading(true);
         try {
             const res = await fetch(`${AUTH_URL}/verify-otp`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    email: email,
-                    otp: otpCode,
-                    type: type
-                }),
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, otp: otpCode, type }),
             });
-                // console.log(body);
-                console.log("Response Status:", res.status);
 
-            // --- FIX STARTS HERE ---
-            const contentType = res.headers.get("content-type");
+            // ✅ Handle both JSON and plain-text responses from server
+            const contentType = res.headers.get('content-type');
             let data;
-
-            if (contentType && contentType.includes("application/json")) {
+            if (contentType && contentType.includes('application/json')) {
                 data = await res.json();
             } else {
-                // If server sends plain text like "OTP verified successfully!"
-                const textData = await res.text();
-                data = { message: textData };
+                const text = await res.text();
+                data = { message: text };
             }
-            console.log("Parsed Data:", data);
-            // --- FIX ENDS HERE ---
 
             if (res.ok) {
-                // navigation.navigate("ResetPassword", { email, otp: otpCode });
-                navigation.navigate("Login",{email, otp: otpCode})
+                navigation.navigate('Login', { email, otp: otpCode });
             } else {
-                Alert.alert("Error", data.message || "Verification failed");
+                Alert.alert('Verification Failed', data.message || 'Invalid code. Please try again.');
             }
         } catch (err) {
-            Alert.alert("Error", "Connection failed.");
-        } finally { setLoading(false); }
+            Alert.alert('Connection Error', 'Could not reach server. Check your network.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <Text style={styles.logoText}>AiTut</Text>
-            <View style={styles.card}>
-                <Text style={styles.title}>Verify Account</Text>
-                <Text style={styles.subtitle}>Enter the code sent to {email}</Text>
-                <OtpInput otp={otp} setOtp={setOtp} />
-                <TouchableOpacity style={styles.button} onPress={handleVerify} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify</Text>}
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+            <StatusBar barStyle="light-content" backgroundColor="#4F46E5" />
+            <ScrollView
+                style={styles.container}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+            >
+                {/* Brand Header — matches Login.js */}
+                <View style={styles.header}>
+                    <View style={styles.logoBox}>
+                        <Text style={styles.logoText}>A</Text>
+                    </View>
+                    <Text style={styles.brandName}>AiTut</Text>
+                    <Text style={styles.tagline}>Your AI-powered learning companion</Text>
+                </View>
+
+                {/* Card — matches Login.js card style */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Verify Account</Text>
+                    <Text style={styles.cardSubtitle}>
+                        Enter the 4-digit code sent to{'\n'}
+                        <Text style={styles.emailHighlight}>{email}</Text>
+                    </Text>
+
+                    {/* OTP Input */}
+                    <View style={styles.otpWrapper}>
+                        <OtpInput otp={otp} setOtp={setOtp} />
+                    </View>
+
+                    {/* Verify Button */}
+                    <TouchableOpacity
+                        style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+                        onPress={handleVerify}
+                        disabled={loading}
+                        activeOpacity={0.85}
+                    >
+                        {loading
+                            ? <ActivityIndicator color="#FFF" />
+                            : <Text style={styles.primaryBtnText}>Verify →</Text>
+                        }
+                    </TouchableOpacity>
+
+                    {/* Back to Login */}
+                    <View style={styles.footerRow}>
+                        <Text style={styles.footerText}>Wrong email? </Text>
+                        <TouchableOpacity onPress={() => navigation.goBack()}>
+                            <Text style={styles.footerLink}>Go back</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
-};
-// Use your existing styles he
-// re...
+}
+
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#9788FB", // That purple background you had
-        justifyContent: 'center',
+    container: { flex: 1, backgroundColor: '#4F46E5' },
+    scrollContent: { flexGrow: 1, paddingBottom: 30 },
+
+    // Brand header — identical to Login.js
+    header: { alignItems: 'center', paddingTop: 70, paddingBottom: 36 },
+    logoBox: {
+        width: 60, height: 60, borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center', alignItems: 'center', marginBottom: 14,
     },
-    logoText: {
-        fontSize: 36,
-        fontWeight: "900",
-        color: "#fff",
-        textAlign: 'center',
-        marginBottom: 30,
-        letterSpacing: 2,
-    },
+    logoText: { fontSize: 28, fontWeight: '900', color: '#FFF' },
+    brandName: { fontSize: 28, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 },
+    tagline: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+
+    // Card — identical to Login.js
     card: {
-        backgroundColor: "#ffffff",
-        borderRadius: 35,
-        padding: 30,
-        marginHorizontal: 20,
-        // Shadow for iOS
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.2,
-        shadowRadius: 15,
-        // Elevation for Android
-        elevation: 15,
+        backgroundColor: '#FFF', marginHorizontal: 20,
+        borderRadius: 28, padding: 28, elevation: 12,
+        shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 20,
     },
-    backBtn: {
-        alignSelf: 'flex-start',
-        marginBottom: 10,
-        padding: 5
+    cardTitle: { fontSize: 22, fontWeight: '800', color: '#1A1A1A', marginBottom: 6 },
+    cardSubtitle: { fontSize: 13, color: '#94A3B8', marginBottom: 24, lineHeight: 20 },
+    emailHighlight: { fontWeight: '700', color: '#4F46E5' },
+
+    otpWrapper: { marginBottom: 24 },
+
+    primaryBtn: {
+        backgroundColor: '#4F46E5', borderRadius: 16,
+        paddingVertical: 16, alignItems: 'center', marginBottom: 20,
+        elevation: 4, shadowColor: '#4F46E5', shadowOpacity: 0.3, shadowRadius: 10,
     },
-    backArrow: {
-        fontSize: 28,
-        color: '#333',
-        fontWeight: 'bold'
-    },
-    title: {
-        fontSize: 26,
-        fontWeight: "bold",
-        textAlign: "center",
-        color: "#1a1a1a",
-    },
-    subtitle: {
-        fontSize: 15,
-        color: "#777",
-        textAlign: "center",
-        marginVertical: 15,
-        lineHeight: 22,
-    },
-    emailHighlight: {
-        fontWeight: 'bold',
-        color: '#333'
-    },
-    button: {
-        backgroundColor: "#1E90FF", // The blue action button
-        paddingVertical: 15,
-        borderRadius: 20,
-        marginTop: 10,
-        shadowColor: "#1E90FF",
-        shadowOffset: { width: 0, height: 5 },
-        shadowOpacity: 0.3,
-        elevation: 5,
-    },
-    buttonText: {
-        color: "#fff",
-        fontSize: 20,
-        textAlign: "center",
-        fontWeight: "bold",
-    },
+    primaryBtnDisabled: { opacity: 0.7 },
+    primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+
+    footerRow: { flexDirection: 'row', justifyContent: 'center' },
+    footerText: { fontSize: 14, color: '#94A3B8' },
+    footerLink: { fontSize: 14, color: '#4F46E5', fontWeight: '700' },
 });
-export default VerifyAccount;

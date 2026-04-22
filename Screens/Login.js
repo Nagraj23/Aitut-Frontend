@@ -1,22 +1,10 @@
 import React, { useState, useContext } from "react";
 import {
-    View,
-    Text,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    ScrollView,
-    Image,
-    Alert,
-    StatusBar,
-    ActivityIndicator,
-    ToastAndroid,
+    View, Text, StyleSheet, TextInput, TouchableOpacity,
+    ScrollView, StatusBar, ActivityIndicator, Alert, KeyboardAvoidingView, Platform
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AUTH_URL } from "../Constants/Api";
-
-
-// 1. Import the AuthContext
 import { AuthContext } from "../context/AuthContext";
 
 export default function Login({ navigation }) {
@@ -24,223 +12,196 @@ export default function Login({ navigation }) {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
-
-    // 2. Access the signIn function from context
+    const [showPass, setShowPass] = useState(false);
     const { signIn } = useContext(AuthContext);
 
-    // Initial Configuration
-
-
-    // Helper to process successful login
-    const onLoginSuccess = async (data) => {
-        console.log("📦 [Login] Backend Response Data:", data);
-
-        // EXTRACT THE DATA (Be very careful with naming here)
-        const token = data.accessToken;
-        const refresh = data.refreshToken;
-        const isComplete = data.complete; // This matches your "complete": false in JSON
-
-        // CRITICAL: Check if token exists before hitting AsyncStorage
-        if (!token) {
-            console.error("❌ [Login]: accessToken is undefined in the response!");
-            return;
-        }
-
-        try {
-            // Save to Storage
-            await AsyncStorage.setItem("accessToken", token);
-
-            if (refresh) {
-                await AsyncStorage.setItem("refreshToken", refresh);
-            }
-
-            // Save User Details (id, name, role)
-            const userDetails = {
-                id: data.id,
-                name: data.name,
-                role: data.role
-            };
-            await AsyncStorage.setItem("userDetails", JSON.stringify(userDetails));
-            await AsyncStorage.setItem("isComplete", String(isComplete));
-
-            console.log("✅ [Login]: Storage saved. Calling Context SignIn...");
-
-            // TRIGGER THE NAVIGATOR SWITCH
-            // We pass the token and the 'complete' status to our AuthContext
-            await signIn({
-                accessToken: token,
-                complete: isComplete,
-                role: data.role,
-                id: data.id,
-                name: data.name
-            });
-
-        } catch (error) {
-            console.error("🚨 [Login] Storage Error:", error);
-        }
-    };
-
-    const handleGithubLogin = async () => {
-        setLoading(true);
-        try {
-            console.log("🔵 [Login]: Starting GitHub Login...");
-            const githubCode = "GITHUB_AUTH_CODE"; // Placeholder for actual flow
-
-            const response = await fetch(`${AUTH_URL}/github`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ code: githubCode }),
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-                await onLoginSuccess(data);
-            } else {
-                Alert.alert("GitHub Login Failed", data.message || "OAuth Error");
-            }
-        } catch (error) {
-            console.error("🚨 [Login]: GitHub Auth Error:", error);
-            Alert.alert("Error", "Could not connect to GitHub Service");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // --- STANDARD LOGIN LOGIC ---
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
-            Alert.alert("Error", "Please enter Email and Password");
+            Alert.alert("Missing Fields", "Please enter your email and password.");
             return;
         }
         setLoading(true);
         try {
-            console.log("📨 [Login]: Attempting standard email login...");
             const response = await fetch(`${AUTH_URL}/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: email.trim(), password: password }),
+                body: JSON.stringify({ email: email.trim(), password }),
             });
             const data = await response.json();
             if (response.ok) {
+                const userDetails = {
+                    id: data.id, name: data.name,
+                    role: data.role, isComplete: data.isComplete || data.complete || false,
+                    accessToken: data.accessToken, refreshToken: data.refreshToken,
+                };
+                await AsyncStorage.multiSet([
+                    ["accessToken", data.accessToken],
+                    ["refreshToken", data.refreshToken || ""],
+                    ["userDetails", JSON.stringify(userDetails)],
+                    ["isComplete", String(data.isComplete || data.complete || false)],
+                ]);
                 if (rememberMe) {
-                    await AsyncStorage.setItem("savedEmail", email);
-                    await AsyncStorage.setItem("savedPassword", password);
-                    await AsyncStorage.setItem("rememberMe", "true");
+                    await AsyncStorage.multiSet([
+                        ["savedEmail", email], ["savedPassword", password], ["rememberMe", "true"]
+                    ]);
                 }
-                await onLoginSuccess(data);
+                await signIn({ ...data, isComplete: data.isComplete || data.complete || false });
             } else {
-                Alert.alert("Login Failed", data.message || "Invalid credentials");
+                Alert.alert("Login Failed", data.message || "Invalid credentials.");
             }
-        } catch (error) {
-            console.error("🚨 [Login]: Fetch Error:", error);
-            Alert.alert("Connection Error", "Server unreachable");
+        } catch (e) {
+            Alert.alert("Connection Error", "Could not reach server. Check your network.");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#9788FB" />
-            <View style={styles.headerBackground}>
-                <Text style={styles.brandName}>AiTut</Text>
-            </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <StatusBar barStyle="light-content" backgroundColor="#4F46E5" />
+            <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-            <View style={styles.formCard}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                    <Text style={styles.welcomeTitle}>Welcome back</Text>
-                    <Text style={styles.welcomeSubtitle}>Sign in to enjoy the best experience</Text>
+                {/* Brand Header */}
+                <View style={styles.header}>
+                    <View style={styles.logoBox}>
+                        <Text style={styles.logoText}>A</Text>
+                    </View>
+                    <Text style={styles.brandName}>AiTut</Text>
+                    <Text style={styles.tagline}>Your AI-powered learning companion</Text>
+                </View>
 
-                    {/* Email Input */}
-                    <View style={styles.inputWrapper}>
+                {/* Form Card */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Welcome back</Text>
+                    <Text style={styles.cardSubtitle}>Sign in to continue learning</Text>
+
+                    {/* Email */}
+                    <View style={styles.fieldGroup}>
                         <Text style={styles.label}>Email</Text>
-                        <View style={styles.inputContainer}>
+                        <View style={styles.inputRow}>
+                            <Text style={styles.inputIcon}>✉️</Text>
                             <TextInput
                                 style={styles.input}
-                                placeholder="example@mail.com"
+                                placeholder="you@example.com"
+                                placeholderTextColor="#94A3B8"
                                 value={email}
                                 onChangeText={setEmail}
                                 autoCapitalize="none"
+                                keyboardType="email-address"
                             />
                         </View>
                     </View>
 
-                    {/* Password Input */}
-                    <View style={styles.inputWrapper}>
+                    {/* Password */}
+                    <View style={styles.fieldGroup}>
                         <Text style={styles.label}>Password</Text>
-                        <View style={styles.inputContainer}>
+                        <View style={styles.inputRow}>
+                            <Text style={styles.inputIcon}>🔒</Text>
                             <TextInput
                                 style={styles.input}
-                                placeholder="password"
-                                secureTextEntry
+                                placeholder="••••••••"
+                                placeholderTextColor="#94A3B8"
+                                secureTextEntry={!showPass}
                                 value={password}
                                 onChangeText={setPassword}
                             />
+                            <TouchableOpacity onPress={() => setShowPass(!showPass)} style={styles.showBtn}>
+                                <Text style={styles.showBtnText}>{showPass ? "Hide" : "Show"}</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
 
-                    {/* Options Row */}
+                    {/* Options */}
                     <View style={styles.optionsRow}>
-                        <TouchableOpacity onPress={() => setRememberMe(!rememberMe)} style={styles.checkboxContainer}>
-                            <View style={[styles.checkbox, rememberMe && styles.checkboxActive]} />
-                            <Text style={styles.optionText}>Remember me</Text>
+                        <TouchableOpacity onPress={() => setRememberMe(!rememberMe)} style={styles.checkRow}>
+                            <View style={[styles.checkbox, rememberMe && styles.checkboxOn]} />
+                            <Text style={styles.checkLabel}>Remember me</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => navigation.navigate("Email")}>
-                            <Text style={styles.forgotText}>Forget Password?</Text>
+                            <Text style={styles.forgotText}>Forgot password?</Text>
                         </TouchableOpacity>
                     </View>
 
-                    {/* Login Button */}
-                    <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginButtonText}>Log in</Text>}
+                    {/* Sign In Button */}
+                    <TouchableOpacity
+                        style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+                        onPress={handleLogin}
+                        disabled={loading}
+                        activeOpacity={0.85}
+                    >
+                        {loading
+                            ? <ActivityIndicator color="#FFF" />
+                            : <Text style={styles.primaryBtnText}>Sign In</Text>
+                        }
                     </TouchableOpacity>
 
-                    <View style={styles.dividerContainer}>
-                        <View style={styles.line} />
-                        <Text style={styles.dividerText}>Or login with</Text>
-                        <View style={styles.line} />
-                    </View>
-
-
-                    <View style={styles.footer}>
+                    {/* Footer */}
+                    <View style={styles.footerRow}>
                         <Text style={styles.footerText}>Don't have an account? </Text>
                         <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-                            <Text style={styles.signUpText}>Sign up</Text>
+                            <Text style={styles.footerLink}>Sign up</Text>
                         </TouchableOpacity>
                     </View>
-                </ScrollView>
-            </View>
-        </View>
+                </View>
+
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#9788FB" },
-    headerBackground: { height: "23%", alignItems: "center", paddingTop: 20 },
-    brandName: { color: "#fff", fontSize: 50, fontWeight: "bold", marginTop: 15 },
-    formCard: { flex: 1, backgroundColor: "#fff", borderTopLeftRadius: 40, borderTopRightRadius: 40, paddingHorizontal: 30 },
-    scrollContent: { paddingTop: 30, paddingBottom: 20 },
-    welcomeTitle: { fontSize: 35, fontWeight: "bold", textAlign: "center", color: "#1E293B" },
-    welcomeSubtitle: { fontSize: 18, color: "#94A3B8", textAlign: "center", marginTop: 10, marginBottom: 30 },
-    inputWrapper: { marginBottom: 20 },
-    label: { fontSize: 18, fontWeight: "bold", color: "#1E293B", marginBottom: 8 },
-    inputContainer: { borderWidth: 1, borderColor: "#F1F5F9", borderRadius: 25, height: 45, justifyContent: "center", paddingHorizontal: 20 },
-    input: { fontSize: 15, color: "#1E293B" },
-    optionsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 30 },
-    checkboxContainer: { flexDirection: "row", alignItems: "center" },
-    checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: "#CBD5E1", marginRight: 8 },
-    checkboxActive: { backgroundColor: "#9788FB", borderColor: "#9788FB" },
-    optionText: { fontSize: 15, color: "#64748B" },
-    forgotText: { fontSize: 15, fontWeight: "bold", color: "#1E293B" },
-    loginButton: { backgroundColor: "#4f46e5", height: 50, borderRadius: 30, justifyContent: "center", alignItems: "center", marginBottom: 30 },
-    loginButtonText: { fontSize: 24, fontWeight: "bold", color: "#ffffff" },
-    dividerContainer: { flexDirection: "row", alignItems: "center", marginBottom: 25 },
-    line: { flex: 1, height: 1, backgroundColor: "#C4C4C4" },
-    dividerText: { marginHorizontal: 15, color: "#242424", fontSize: 18 },
-    socialRow: { flexDirection: "row", justifyContent: "center", gap: 20, marginBottom: 30 },
-    socialCircle: { width: 50, height: 50, borderRadius: 30, backgroundColor: "#F8FAFC", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#F1F5F9" },
-    socialIcon: { width: 35, height: 35, resizeMode: "contain" },
-    footer: { flexDirection: "row", justifyContent: "center" },
-    footerText: { color: "#94A3B8", fontSize: 20 },
-    signUpText: { fontWeight: "bold", color: "#1E293B", fontSize: 20 },
+    container: { flex: 1, backgroundColor: "#4F46E5" },
+    scrollContent: { flexGrow: 1, paddingBottom: 30 },
+
+    header: { alignItems: "center", paddingTop: 70, paddingBottom: 36 },
+    logoBox: {
+        width: 60, height: 60, borderRadius: 18,
+        backgroundColor: "rgba(255,255,255,0.2)",
+        justifyContent: "center", alignItems: "center", marginBottom: 14,
+    },
+    logoText: { fontSize: 28, fontWeight: "900", color: "#FFF" },
+    brandName: { fontSize: 28, fontWeight: "900", color: "#FFF", letterSpacing: 0.5 },
+    tagline: { fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 4 },
+
+    card: {
+        backgroundColor: "#FFF", marginHorizontal: 20,
+        borderRadius: 28, padding: 28, elevation: 12,
+        shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 20,
+    },
+    cardTitle: { fontSize: 22, fontWeight: "800", color: "#1A1A1A", marginBottom: 4 },
+    cardSubtitle: { fontSize: 13, color: "#94A3B8", marginBottom: 24 },
+
+    fieldGroup: { marginBottom: 18 },
+    label: { fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 8 },
+    inputRow: {
+        flexDirection: "row", alignItems: "center",
+        backgroundColor: "#F8FAFC", borderRadius: 14,
+        borderWidth: 1.5, borderColor: "#E2E8F0", paddingHorizontal: 14,
+    },
+    inputIcon: { fontSize: 16, marginRight: 10 },
+    input: { flex: 1, paddingVertical: 13, fontSize: 15, color: "#1A1A1A" },
+    showBtn: { paddingLeft: 8 },
+    showBtnText: { fontSize: 12, color: "#4F46E5", fontWeight: "700" },
+
+    optionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+    checkRow: { flexDirection: "row", alignItems: "center" },
+    checkbox: {
+        width: 18, height: 18, borderRadius: 5,
+        borderWidth: 1.5, borderColor: "#CBD5E1", marginRight: 8,
+    },
+    checkboxOn: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
+    checkLabel: { fontSize: 13, color: "#64748B" },
+    forgotText: { fontSize: 13, color: "#4F46E5", fontWeight: "700" },
+
+    primaryBtn: {
+        backgroundColor: "#4F46E5", borderRadius: 16,
+        paddingVertical: 16, alignItems: "center", marginBottom: 20,
+        elevation: 4, shadowColor: "#4F46E5", shadowOpacity: 0.3, shadowRadius: 10,
+    },
+    primaryBtnDisabled: { opacity: 0.7 },
+    primaryBtnText: { color: "#FFF", fontSize: 16, fontWeight: "800" },
+
+    footerRow: { flexDirection: "row", justifyContent: "center" },
+    footerText: { fontSize: 14, color: "#94A3B8" },
+    footerLink: { fontSize: 14, color: "#4F46E5", fontWeight: "700" },
 });

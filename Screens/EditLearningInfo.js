@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
     ScrollView, ActivityIndicator, Alert
@@ -6,17 +6,39 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { AUTH_URL } from '../Constants/Api';
-import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
 const DURATION_OPTIONS = ['6 Months', '1 Year', '2 Years', '3 Years', '4 Years'];
 
+// ✅ NEW: Preset subject/course options grouped by category
+const COURSE_CATEGORIES = [
+    {
+        label: '💻 Programming & CS',
+        courses: ['Data Structures & Algorithms', 'Full Stack Development', 'React Native', 'Python Programming', 'Java', 'C++', 'System Design'],
+    },
+    {
+        label: '🤖 AI & Data',
+        courses: ['Machine Learning', 'Deep Learning', 'Data Science', 'NLP', 'Computer Vision'],
+    },
+    {
+        label: '🌐 Web & Mobile',
+        courses: ['React.js', 'Node.js', 'Flutter', 'Android Development', 'iOS Development'],
+    },
+    {
+        label: '📊 Core Subjects',
+        courses: ['Database Management', 'Operating Systems', 'Computer Networks', 'Software Engineering', 'Discrete Mathematics'],
+    },
+    {
+        label: '☁️ Cloud & DevOps',
+        courses: ['AWS', 'Docker & Kubernetes', 'DevOps', 'Cybersecurity'],
+    },
+];
+
 const EditLearningInfo = ({ navigation }) => {
-    
     const { refreshIsComplete } = useContext(AuthContext);
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
-    const [saved, setSaved] = useState(false);
+    const [expandedCategory, setExpandedCategory] = useState(null);
 
     const [formData, setFormData] = useState({
         university: '',
@@ -26,7 +48,6 @@ const EditLearningInfo = ({ navigation }) => {
         courseDuration: '',
         dailyStudyHours: '',
     });
-
     const [errors, setErrors] = useState({});
 
     useEffect(() => { prefillForm(); }, []);
@@ -72,7 +93,6 @@ const EditLearningInfo = ({ navigation }) => {
 
     const handleSave = async () => {
         if (!validate()) return;
-
         setLoading(true);
         try {
             const details = await AsyncStorage.getItem('userDetails');
@@ -96,8 +116,6 @@ const EditLearningInfo = ({ navigation }) => {
 
             if (response.data) {
                 const updated = response.data;
-
-                // Merge into local cache
                 const currentDetails = JSON.parse(await AsyncStorage.getItem('userDetails') || '{}');
                 const merged = {
                     ...currentDetails,
@@ -112,29 +130,21 @@ const EditLearningInfo = ({ navigation }) => {
                 if (updated.accessToken) {
                     await AsyncStorage.setItem('accessToken', updated.accessToken);
                 }
-                // await AsyncStorage.setItem('isComplete', String(updated.isComplete));
                 await AsyncStorage.setItem('isComplete', String(updated.isComplete || false));
                 await refreshIsComplete?.();
-
-                setSaved(true);
 
                 Alert.alert(
                     '✅ Profile Updated!',
                     updated.isComplete
                         ? 'Profile complete! You can now take the diagnostic test.'
                         : 'Academic info saved.',
-                    [
-                        {
-                            text: updated.isComplete ? 'Start Test' : 'OK',
-                            onPress: () => {
-                                if (updated.isComplete) {
-                                    navigation.navigate('DiagnosticTest');
-                                } else {
-                                    navigation.goBack();
-                                }
-                            }
+                    [{
+                        text: updated.isComplete ? 'Start Test' : 'OK',
+                        onPress: () => {
+                            if (updated.isComplete) navigation.navigate('DiagnosticTest');
+                            else navigation.goBack();
                         }
-                    ]
+                    }]
                 );
             }
         } catch (error) {
@@ -154,8 +164,11 @@ const EditLearningInfo = ({ navigation }) => {
     }
 
     return (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-
+        <ScrollView
+            style={styles.container}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+        >
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -169,42 +182,102 @@ const EditLearningInfo = ({ navigation }) => {
 
             <View style={styles.formContainer}>
 
-                {/* Section: Institution */}
+                {/* Institution */}
                 <SectionHeader title="🏛️ Institution" />
-
                 <InputField
                     label="University"
                     placeholder="e.g. Solapur University"
                     value={formData.university}
-                    onChangeText={(t) => update('university', t)}
+                    onChangeText={t => update('university', t)}
                 />
                 <InputField
                     label="College / Institute"
                     placeholder="e.g. BMIT College"
                     value={formData.college}
-                    onChangeText={(t) => update('college', t)}
+                    onChangeText={t => update('college', t)}
                 />
                 <InputField
                     label="Branch / Department"
                     placeholder="e.g. Computer Science"
                     value={formData.department}
-                    onChangeText={(t) => update('department', t)}
+                    onChangeText={t => update('department', t)}
                 />
 
-                {/* Section: Course */}
-                <SectionHeader title="📚 Course Details" />
+                {/* Course Details */}
+                <SectionHeader title="📚 Course / Subject *" />
 
-                <InputField
-                    label="Target Course / Subject *"
-                    placeholder="e.g. Data Structures, Full Stack Dev"
-                    value={formData.targetCourse}
-                    onChangeText={(t) => update('targetCourse', t)}
-                    error={errors.targetCourse}
-                />
+                {/* ✅ NEW: Show selected course badge */}
+                {formData.targetCourse ? (
+                    <View style={styles.selectedCourseBox}>
+                        <Text style={styles.selectedCourseLabel}>Selected:</Text>
+                        <View style={styles.selectedCourseBadge}>
+                            <Text style={styles.selectedCourseText}>{formData.targetCourse}</Text>
+                            <TouchableOpacity onPress={() => update('targetCourse', '')}>
+                                <Text style={styles.clearBtn}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ) : null}
 
-                {/* Course Duration Chips */}
+                {/* ✅ NEW: Grouped accordion course picker */}
+                {COURSE_CATEGORIES.map(cat => (
+                    <View key={cat.label} style={styles.categoryBlock}>
+                        <TouchableOpacity
+                            style={styles.categoryHeader}
+                            onPress={() => setExpandedCategory(expandedCategory === cat.label ? null : cat.label)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.categoryLabel}>{cat.label}</Text>
+                            <Text style={styles.categoryArrow}>
+                                {expandedCategory === cat.label ? '▲' : '▼'}
+                            </Text>
+                        </TouchableOpacity>
+                        {expandedCategory === cat.label && (
+                            <View style={styles.chipsRow}>
+                                {cat.courses.map(course => (
+                                    <TouchableOpacity
+                                        key={course}
+                                        style={[
+                                            styles.chip,
+                                            formData.targetCourse === course && styles.chipActive
+                                        ]}
+                                        onPress={() => {
+                                            update('targetCourse', course);
+                                            setExpandedCategory(null);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[
+                                            styles.chipText,
+                                            formData.targetCourse === course && styles.chipTextActive
+                                        ]}>
+                                            {course}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                    </View>
+                ))}
+
+                {/* Manual input fallback */}
                 <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>Course Duration *</Text>
+                    <Text style={styles.fieldLabel}>Or type a custom subject</Text>
+                    <TextInput
+                        style={[styles.input, errors.targetCourse && styles.inputError]}
+                        placeholder="e.g. Compiler Design, DBMS..."
+                        placeholderTextColor="#CBD5E1"
+                        value={formData.targetCourse}
+                        onChangeText={t => update('targetCourse', t)}
+                    />
+                    {errors.targetCourse && (
+                        <Text style={styles.errorText}>{errors.targetCourse}</Text>
+                    )}
+                </View>
+
+                {/* Duration */}
+                <SectionHeader title="📅 Course Duration *" />
+                <View style={styles.fieldGroup}>
                     <View style={styles.chipsRow}>
                         {DURATION_OPTIONS.map(d => (
                             <TouchableOpacity
@@ -213,47 +286,58 @@ const EditLearningInfo = ({ navigation }) => {
                                 onPress={() => update('courseDuration', d)}
                                 activeOpacity={0.7}
                             >
-                                <Text style={[styles.chipText, formData.courseDuration === d && styles.chipTextActive]}>
+                                <Text style={[
+                                    styles.chipText,
+                                    formData.courseDuration === d && styles.chipTextActive
+                                ]}>
                                     {d}
                                 </Text>
                             </TouchableOpacity>
                         ))}
                     </View>
-                    {errors.courseDuration && <Text style={styles.errorText}>{errors.courseDuration}</Text>}
+                    {errors.courseDuration && (
+                        <Text style={styles.errorText}>{errors.courseDuration}</Text>
+                    )}
                 </View>
 
-                {/* Section: Study Habit */}
-                <SectionHeader title="⏰ Study Habit" />
-
+                {/* Study Hours */}
+                <SectionHeader title="⏰ Study Habit *" />
                 <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>Daily Study Hours *</Text>
+                    <Text style={styles.fieldLabel}>Daily Study Hours</Text>
                     <View style={styles.hoursRow}>
                         {['1', '2', '3', '4', '5', '6', '8'].map(h => (
                             <TouchableOpacity
                                 key={h}
-                                style={[styles.hourChip, formData.dailyStudyHours === h && styles.hourChipActive]}
+                                style={[
+                                    styles.hourChip,
+                                    formData.dailyStudyHours === h && styles.hourChipActive
+                                ]}
                                 onPress={() => update('dailyStudyHours', h)}
                             >
-                                <Text style={[styles.hourChipText, formData.dailyStudyHours === h && styles.hourChipTextActive]}>
+                                <Text style={[
+                                    styles.hourChipText,
+                                    formData.dailyStudyHours === h && styles.hourChipTextActive
+                                ]}>
                                     {h}h
                                 </Text>
                             </TouchableOpacity>
                         ))}
                     </View>
-                    {/* Manual input fallback */}
                     <TextInput
                         style={[styles.input, { marginTop: 10 }, errors.dailyStudyHours && styles.inputError]}
-                        placeholder="Or type custom hours (1-24)"
+                        placeholder="Or type custom hours (1–24)"
                         placeholderTextColor="#CBD5E1"
                         keyboardType="numeric"
                         value={formData.dailyStudyHours}
-                        onChangeText={(t) => update('dailyStudyHours', t)}
+                        onChangeText={t => update('dailyStudyHours', t)}
                         maxLength={2}
                     />
-                    {errors.dailyStudyHours && <Text style={styles.errorText}>{errors.dailyStudyHours}</Text>}
+                    {errors.dailyStudyHours && (
+                        <Text style={styles.errorText}>{errors.dailyStudyHours}</Text>
+                    )}
                 </View>
 
-                {/* Save Button */}
+                {/* Save */}
                 <TouchableOpacity
                     style={[styles.submitBtn, loading && { opacity: 0.7 }]}
                     onPress={handleSave}
@@ -269,7 +353,6 @@ const EditLearningInfo = ({ navigation }) => {
                 <Text style={styles.hint}>
                     * Required fields. Completing this unlocks the AI diagnostic test.
                 </Text>
-
             </View>
         </ScrollView>
     );
@@ -312,7 +395,7 @@ const styles = StyleSheet.create({
 
     sectionHeader: {
         fontSize: 14, fontWeight: '800', color: '#6366F1',
-        marginBottom: 14, marginTop: 8,
+        marginBottom: 12, marginTop: 8,
         paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#EEF2FF',
     },
     fieldGroup: { marginBottom: 18 },
@@ -320,14 +403,36 @@ const styles = StyleSheet.create({
     input: {
         backgroundColor: '#FFF', borderRadius: 14, paddingHorizontal: 16,
         paddingVertical: 14, fontSize: 15, color: '#1A1A1A',
-        borderWidth: 1.5, borderColor: '#E2E8F0',
-        elevation: 1,
+        borderWidth: 1.5, borderColor: '#E2E8F0', elevation: 1,
     },
     inputError: { borderColor: '#EF4444' },
     errorText: { color: '#EF4444', fontSize: 11, marginTop: 5, marginLeft: 4 },
 
+    // Selected course
+    selectedCourseBox: {
+        flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12,
+    },
+    selectedCourseLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+    selectedCourseBadge: {
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 6,
+        borderRadius: 20, borderWidth: 1, borderColor: '#6366F1',
+    },
+    selectedCourseText: { fontSize: 13, color: '#6366F1', fontWeight: '700' },
+    clearBtn: { fontSize: 12, color: '#6366F1', fontWeight: '800' },
+
+    // Category accordion
+    categoryBlock: { marginBottom: 8 },
+    categoryHeader: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        backgroundColor: '#FFF', borderRadius: 12, padding: 14,
+        borderWidth: 1.5, borderColor: '#E2E8F0', elevation: 1,
+    },
+    categoryLabel: { fontSize: 13, fontWeight: '700', color: '#475569' },
+    categoryArrow: { fontSize: 11, color: '#6366F1' },
+
     // Duration chips
-    chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
     chip: {
         paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
         backgroundColor: '#FFF', borderWidth: 1.5, borderColor: '#E2E8F0',
@@ -339,9 +444,9 @@ const styles = StyleSheet.create({
     // Hours chips
     hoursRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     hourChip: {
-        width: 46, height: 46, borderRadius: 13, justifyContent: 'center',
-        alignItems: 'center', backgroundColor: '#FFF',
-        borderWidth: 1.5, borderColor: '#E2E8F0',
+        width: 46, height: 46, borderRadius: 13,
+        justifyContent: 'center', alignItems: 'center',
+        backgroundColor: '#FFF', borderWidth: 1.5, borderColor: '#E2E8F0',
     },
     hourChipActive: { backgroundColor: '#6366F1', borderColor: '#6366F1' },
     hourChipText: { fontSize: 13, fontWeight: '700', color: '#64748B' },
@@ -353,7 +458,6 @@ const styles = StyleSheet.create({
         elevation: 5, shadowColor: '#6366F1', shadowOpacity: 0.35, shadowRadius: 12,
     },
     submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
-
     hint: { textAlign: 'center', color: '#94A3B8', fontSize: 12, marginTop: 14, lineHeight: 18 },
 });
 
