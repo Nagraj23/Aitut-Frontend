@@ -34,7 +34,7 @@ export default function DiagnosticTest({ navigation }) {
 
             const response = await axios.post(
                 `${ASSESSMENT_URL}/api/assessment/generate/`,
-                { domain, university },
+                { domain },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 

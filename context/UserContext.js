@@ -13,6 +13,8 @@ export const UserProvider = ({ children }) => {
 
     // 🚀 INIT
     useEffect(() => {
+        console.log("🔁 UserContext init triggered");
+
         if (userToken) {
             console.log("🚀 Token detected → loading roadmap...");
             initializeRoadmap();
@@ -27,35 +29,34 @@ export const UserProvider = ({ children }) => {
         setIsDataLoading(true);
 
         try {
-            const localRoadmap = await AsyncStorage.getItem('userRoadmap');
+            console.log("📦 Checking AsyncStorage cache...");
 
-            console.log("📦 Cached roadmap:", localRoadmap);
+            const cached = await AsyncStorage.getItem('userRoadmap');
 
-            if (localRoadmap) {
-                const parsed = JSON.parse(localRoadmap);
+            if (cached) {
+                const parsed = JSON.parse(cached);
 
-                const normalized = {
-                    ...parsed,
-                    days: parsed.daily_plan || []
-                };
+                console.log("📂 CACHE FOUND");
+                console.log("📊 Cached roadmap title:", parsed?.title);
+                console.log("📊 Cached days:", parsed?.daily_plan?.length);
 
-                setRoadmap(normalized);
-
-                console.log("✅ Loaded roadmap from storage");
-                console.log("📊 Days:", normalized.days.length);
+                setRoadmap(parsed);
             } else {
-                console.log("🌐 No cache → fetching roadmap");
-                await fetchRoadmap();
+                console.log("❌ No cache found");
             }
+
+            console.log("🌐 Calling API refresh...");
+            await fetchRoadmap();
 
         } catch (err) {
             console.error("🚨 Init error:", err);
+            await fetchRoadmap();
         } finally {
             setIsDataLoading(false);
         }
     };
 
-    // 🚀 FETCH ROADMAP ONLY
+    // 🚀 FETCH FROM API
     const fetchRoadmap = async () => {
         setIsDataLoading(true);
 
@@ -63,13 +64,14 @@ export const UserProvider = ({ children }) => {
             const storedDetails = await AsyncStorage.getItem('userDetails');
 
             if (!storedDetails) {
-                console.warn("⚠️ No userDetails found");
+                console.warn("⚠️ No userDetails found in storage");
                 return;
             }
 
             const { id } = JSON.parse(storedDetails);
 
-            console.log("🆔 User ID:", id);
+            console.log("🆔 USER ID:", id);
+            console.log("🌍 API:", `${ASSESSMENT_URL}/roadmaps/latest/${id}/`);
 
             const res = await fetch(
                 `${ASSESSMENT_URL}/roadmaps/latest/${id}/`,
@@ -82,37 +84,44 @@ export const UserProvider = ({ children }) => {
                 }
             );
 
+            console.log("📡 Response status:", res.status);
+
             if (!res.ok) {
-                console.error("❌ Roadmap fetch failed:", res.status);
+                const errText = await res.text();
+                console.error("❌ API ERROR BODY:", errText);
                 return;
             }
 
             const data = await res.json();
 
-            console.log("📥 RAW ROADMAP:", data);
+            // console.log("📥 RAW ROADMAP RESPONSE:");
+            // console.log(JSON.stringify(data, null, 2));
 
-            const normalized = {
-                ...data,
-                days: data.daily_plan || []
-            };
+            // console.log("📊 Title:", data?.title);
+            // console.log("📊 Subject:", data?.subject);
+            // console.log("📊 Days count:", data?.daily_plan?.length);
 
-            setRoadmap(normalized);
+            setRoadmap({ ...data });
 
             await AsyncStorage.setItem(
                 'userRoadmap',
-                JSON.stringify(normalized)
+                JSON.stringify(data)
             );
 
-            console.log("✅ Roadmap stored & set");
+            console.log("💾 Roadmap cached successfully");
 
         } catch (error) {
-            console.error("🚨 Fetch error:", error);
+            console.error("🚨 FETCH FAILED:", error);
 
             try {
                 const cached = await AsyncStorage.getItem('userRoadmap');
+
                 if (cached) {
-                    setRoadmap(JSON.parse(cached));
-                    console.log("📂 fallback roadmap loaded");
+                    const parsed = JSON.parse(cached);
+                    console.log("📂 FALLBACK CACHE USED");
+                    console.log("📊 Days:", parsed?.daily_plan?.length);
+
+                    setRoadmap(parsed);
                 }
             } catch (e) {
                 console.error("❌ fallback failed:", e);
