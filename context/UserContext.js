@@ -6,140 +6,70 @@ import { ASSESSMENT_URL } from '../Constants/Api';
 export const UserContext = createContext();
 
 export const UserProvider = ({ children }) => {
-    const { userToken } = useContext(AuthContext);
-
+    const { userToken, userData } = useContext(AuthContext);
     const [roadmap, setRoadmap] = useState(null);
     const [isDataLoading, setIsDataLoading] = useState(false);
 
-    // 🚀 INIT
     useEffect(() => {
-        console.log("🔁 UserContext init triggered");
-
-        if (userToken) {
-            console.log("🚀 Token detected → loading roadmap...");
-            initializeRoadmap();
+        if (userToken && userData?.id) {
+            syncRoadmapWithDB();
         } else {
-            console.log("🧹 No token → clearing roadmap");
             setRoadmap(null);
         }
-    }, [userToken]);
+    }, [userToken, userData?.id]); // Only re-run if token or specific user ID changes
 
-    // 🚀 INIT ROADMAP
-    const initializeRoadmap = async () => {
+    const syncRoadmapWithDB = async () => {
+        if (!userData?.id) return;
         setIsDataLoading(true);
-
         try {
-            console.log("📦 Checking AsyncStorage cache...");
-
+            // 1. Try Cache
             const cached = await AsyncStorage.getItem('userRoadmap');
-
             if (cached) {
                 const parsed = JSON.parse(cached);
-
-                console.log("📂 CACHE FOUND");
-                console.log("📊 Cached roadmap title:", parsed?.title);
-                console.log("📊 Cached days:", parsed?.daily_plan?.length);
-
-                setRoadmap(parsed);
-            } else {
-                console.log("❌ No cache found");
+                if (parsed.user_id === userData.id) {
+                    setRoadmap(parsed);
+                }
             }
 
-            console.log("🌐 Calling API refresh...");
-            await fetchRoadmap();
-
+            // 2. Fetch Latest from Django
+            await fetchLatestFromDB(userData.id);
         } catch (err) {
-            console.error("🚨 Init error:", err);
-            await fetchRoadmap();
+            console.log("Roadmap Sync Error:", err);
         } finally {
             setIsDataLoading(false);
         }
     };
 
-    // 🚀 FETCH FROM API
-    const fetchRoadmap = async () => {
-        setIsDataLoading(true);
-
+    const fetchLatestFromDB = async (userId) => {
         try {
-            const storedDetails = await AsyncStorage.getItem('userDetails');
-
-            if (!storedDetails) {
-                console.warn("⚠️ No userDetails found in storage");
-                return;
-            }
-
-            const { id } = JSON.parse(storedDetails);
-
-            console.log("🆔 USER ID:", id);
-            console.log("🌍 API:", `${ASSESSMENT_URL}/roadmaps/latest/${id}/`);
-
-            const res = await fetch(
-                `${ASSESSMENT_URL}/roadmaps/latest/${id}/`,
-                {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${userToken}`,
-                        "Content-Type": "application/json"
-                    }
+            // URL matches your Django: /roadmaps/latest/<id>/
+            const res = await fetch(`${ASSESSMENT_URL}/roadmaps/latest/${userId}/`, {
+                headers: {
+                    'Authorization': `Bearer ${userToken}`,
+                    'Content-Type': 'application/json'
                 }
-            );
+            });
 
-            console.log("📡 Response status:", res.status);
-
-            if (!res.ok) {
-                const errText = await res.text();
-                console.error("❌ API ERROR BODY:", errText);
-                return;
+            if (res.ok) {
+                const dbData = await res.json();
+                // Check if roadmap exists in the response
+                if (dbData && !dbData.error) {
+                    setRoadmap(dbData);
+                    await AsyncStorage.setItem('userRoadmap', JSON.stringify(dbData));
+                }
             }
-
-            const data = await res.json();
-
-            // console.log("📥 RAW ROADMAP RESPONSE:");
-            // console.log(JSON.stringify(data, null, 2));
-
-            // console.log("📊 Title:", data?.title);
-            // console.log("📊 Subject:", data?.subject);
-            // console.log("📊 Days count:", data?.daily_plan?.length);
-
-            setRoadmap({ ...data });
-
-            await AsyncStorage.setItem(
-                'userRoadmap',
-                JSON.stringify(data)
-            );
-
-            console.log("💾 Roadmap cached successfully");
-
         } catch (error) {
-            console.error("🚨 FETCH FAILED:", error);
-
-            try {
-                const cached = await AsyncStorage.getItem('userRoadmap');
-
-                if (cached) {
-                    const parsed = JSON.parse(cached);
-                    console.log("📂 FALLBACK CACHE USED");
-                    console.log("📊 Days:", parsed?.daily_plan?.length);
-
-                    setRoadmap(parsed);
-                }
-            } catch (e) {
-                console.error("❌ fallback failed:", e);
-            }
-
-        } finally {
-            setIsDataLoading(false);
+            console.log("🚨 Roadmap DB Fetch Failed:", error.message);
         }
     };
 
     return (
-        <UserContext.Provider
-            value={{
-                roadmap,
-                isDataLoading,
-                fetchRoadmap
-            }}
-        >
+        <UserContext.Provider value={{
+            roadmap,
+            setRoadmap,
+            isDataLoading,
+            refreshRoadmap: syncRoadmapWithDB
+        }}>
             {children}
         </UserContext.Provider>
     );

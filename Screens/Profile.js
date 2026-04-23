@@ -73,7 +73,9 @@ const ProfileScreen = ({ navigation }) => {
         }, [])
     );
 
-    const handleSignOut = () => {
+    const handleSignOut = async () => {
+
+
         Alert.alert('Sign Out', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Logout', style: 'destructive', onPress: signOut }

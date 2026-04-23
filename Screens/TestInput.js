@@ -8,10 +8,12 @@ import axios from 'axios';
 import { ASSESSMENT_URL } from '../Constants/Api';
 
 export default function TestInput({ navigation, route }) {
-    const { testLabel = 'Basic Assessment' } = route.params || {};
+
+    const { testLabel = 'Basic Assessment', isCustomTest } = route.params || {};
+
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
-    const [subjects, setSubjects] = useState(['']); // multiple subjects
+    const [subjects, setSubjects] = useState(['']);
     const [university, setUniversity] = useState('');
     const [domain, setDomain] = useState('');
 
@@ -23,46 +25,66 @@ export default function TestInput({ navigation, route }) {
             if (local) {
                 const u = JSON.parse(local);
                 setUniversity(u.university || '');
-                // Pre-fill first subject from targetCourse
+
                 if (u.targetCourse) {
                     const courses = u.targetCourse.split(',').map(s => s.trim()).filter(Boolean);
                     setSubjects(courses.length ? courses : ['']);
                 }
+
                 setDomain(u.targetCourse || '');
             }
-        } catch (e) { console.log(e); }
-        finally { setFetching(false); }
+        } catch (e) {
+            console.log(e);
+        } finally {
+            setFetching(false);
+        }
     };
 
     const updateSubject = (idx, val) => {
-        setSubjects(prev => { const n = [...prev]; n[idx] = val; return n; });
+        setSubjects(prev => {
+            const n = [...prev];
+            n[idx] = val;
+            return n;
+        });
     };
 
     const addSubject = () => {
-        if (subjects.length < 5) setSubjects(prev => [...prev, '']);
+        if (subjects.length < 5) {
+            setSubjects(prev => [...prev, '']);
+        }
     };
 
     const removeSubject = (idx) => {
-        if (subjects.length > 1) setSubjects(prev => prev.filter((_, i) => i !== idx));
+        if (subjects.length > 1) {
+            setSubjects(prev => prev.filter((_, i) => i !== idx));
+        }
     };
 
     const handleStartTest = async () => {
         const filledSubjects = subjects.filter(s => s.trim());
+
         if (!filledSubjects.length) {
             Alert.alert('Required', 'Please enter at least one subject.');
             return;
         }
+
         if (!university.trim()) {
             Alert.alert('Required', 'Please enter your university name.');
             return;
         }
 
         setLoading(true);
+
         try {
             const token = await AsyncStorage.getItem('accessToken');
             const combinedDomain = filledSubjects.join(', ');
 
-            // Save the test metadata locally before navigating
+            // ✅ YOUR NEW LOGIC (merged safely)
+            if (!isCustomTest) {
+                const current = parseInt(await AsyncStorage.getItem('testsCompleted') || '0');
+                await AsyncStorage.setItem('testsCompleted', String(current + 1));
+            }
+
             const testMeta = {
                 label: testLabel,
                 subjects: filledSubjects,
@@ -70,10 +92,11 @@ export default function TestInput({ navigation, route }) {
                 domain: combinedDomain,
                 startedAt: new Date().toISOString(),
             };
+
             await AsyncStorage.setItem('currentTestMeta', JSON.stringify(testMeta));
 
-            // Navigate to the diagnostic test
             navigation.replace('DiagnosticTest', { testMeta });
+
         } catch (e) {
             Alert.alert('Error', 'Could not start test. Try again.');
         } finally {
@@ -108,8 +131,8 @@ export default function TestInput({ navigation, route }) {
                     </Text>
                 </View>
 
-                {/* Subjects */}
                 <Text style={styles.sectionLabel}>SUBJECTS TO TEST</Text>
+
                 {subjects.map((sub, idx) => (
                     <View key={idx} style={styles.subjectRow}>
                         <TextInput
@@ -126,14 +149,15 @@ export default function TestInput({ navigation, route }) {
                         )}
                     </View>
                 ))}
+
                 {subjects.length < 5 && (
                     <TouchableOpacity onPress={addSubject} style={styles.addSubBtn}>
                         <Text style={styles.addSubBtnText}>+ Add another subject</Text>
                     </TouchableOpacity>
                 )}
 
-                {/* University */}
                 <Text style={[styles.sectionLabel, { marginTop: 20 }]}>UNIVERSITY</Text>
+
                 <TextInput
                     style={styles.input}
                     placeholder="e.g. Solapur University"
@@ -142,7 +166,6 @@ export default function TestInput({ navigation, route }) {
                     onChangeText={setUniversity}
                 />
 
-                {/* Start Button */}
                 <TouchableOpacity
                     style={[styles.startBtn, loading && { opacity: 0.7 }]}
                     onPress={handleStartTest}
@@ -157,6 +180,7 @@ export default function TestInput({ navigation, route }) {
                 <Text style={styles.hint}>
                     Each test has 6 MCQs + 4 descriptive questions. Takes ~15-20 minutes.
                 </Text>
+
             </View>
         </ScrollView>
     );

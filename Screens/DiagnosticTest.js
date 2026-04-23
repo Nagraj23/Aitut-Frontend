@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
     TextInput, ScrollView, ActivityIndicator,
@@ -7,8 +7,10 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { ASSESSMENT_URL } from '../Constants/Api';
+import { UserContext } from '../context/UserContext'; // Ensure context is imported
 
 export default function DiagnosticTest({ navigation }) {
+    const { refreshRoadmap } = useContext(UserContext); // To update context globally
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [testData, setTestData] = useState(null);
@@ -16,7 +18,7 @@ export default function DiagnosticTest({ navigation }) {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState({});
     const [dayNumber, setDayNumber] = useState(1);
-    const [totalDays] = useState(3); // ← updated to 3
+    const [totalDays] = useState(3);
 
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -29,20 +31,20 @@ export default function DiagnosticTest({ navigation }) {
             const userDetails = await AsyncStorage.getItem('userDetails');
             const user = JSON.parse(userDetails);
 
-            const domain = user?.targetCourse || user?.target_course || 'Computer Science';
-            const university = user?.university || 'General';
+            // Using domain strictly from profile or selection
+            const domain = user?.targetCourse || 'Computer Science';
 
             const response = await axios.post(
                 `${ASSESSMENT_URL}/assessment/generate/`,
-                { domain },
+                { domain }, // Only sending domain as requested
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             const data = response.data;
 
+            // Check if backend says onboarding is already done
             if (data.onboarding_finished) {
-                // All 3 tests done — go home, roadmap will be there
-                navigation.replace('Main');
+                await handleFinalRoadmapTrigger(domain, token);
                 return;
             }
 
@@ -51,16 +53,74 @@ export default function DiagnosticTest({ navigation }) {
             setQuestions(rawQuestions);
             setDayNumber(data.day || 1);
         } catch (error) {
-            console.error('Generate test error:', error.response?.data || error.message);
-            Alert.alert(
-                'Error',
-                'Could not load today\'s test. Check your connection and make sure the Assessment server is running.',
-                [{ text: 'Go Back', onPress: () => navigation.goBack() }]
-            );
+            console.error('Generate test error:', error.message);
+            Alert.alert('Error', 'Could not load assessment.', [{ text: 'Go Back', onPress: () => navigation.goBack() }]);
         } finally {
             setLoading(false);
         }
     };
+
+    const handleFinalRoadmapTrigger = async (domain, token) => {
+        try {
+            setSubmitting(true);
+            // Instant Roadmap Generation Call
+            await axios.post(
+                `${ASSESSMENT_URL}/roadmap/create/`,
+                { domain },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            // Update Global Context
+            await refreshRoadmap?.();
+
+            Alert.alert("Success", "Roadmap generated based on your 3 tests!");
+            navigation.replace('Main');
+        } catch (e) {
+            console.error("Roadmap trigger failed", e);
+            navigation.replace('Main');
+        }
+    };
+
+    const handleSubmit = async () => {
+        try {
+            setSubmitting(true);
+            const token = await AsyncStorage.getItem('accessToken');
+            const userDetails = await AsyncStorage.getItem('userDetails');
+            const user = JSON.parse(userDetails);
+            const domain = user?.targetCourse || 'Computer Science';
+
+            const answersArray = Object.entries(answers).map(([id, answer]) => ({
+                id: parseInt(id),
+                answer: answer
+            }));
+
+            const response = await axios.post(
+                `${ASSESSMENT_URL}/assessment/submit/`,
+                { test_id: testData.test_id, answers: answersArray },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            // If this was the 3rd test (onboarding_finished is true)
+            if (response.data.onboarding_finished) {
+                await handleFinalRoadmapTrigger(domain, token);
+            } else {
+                // Otherwise, show result and let them take the next test
+                navigation.replace('TestResult', {
+                    dayNumber,
+                    totalDays,
+                    onboardingFinished: false,
+                    totalQuestions: questions.length,
+                });
+            }
+
+        } catch (error) {
+            Alert.alert('Submission Failed', 'Could not save your answers.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // ... handleSelectOption, handleDescriptiveAnswer, animateTransition, goToNext, goToPrev stay the same ...
 
     const handleSelectOption = (questionId, selectedOption) => {
         const letter = selectedOption.charAt(0);
@@ -81,7 +141,7 @@ export default function DiagnosticTest({ navigation }) {
     const goToNext = () => {
         const currentQ = questions[currentIndex];
         if (!answers[String(currentQ.id)]) {
-            Alert.alert('Answer Required', 'Please select or write an answer before moving on.');
+            Alert.alert('Answer Required', 'Please answer before moving on.');
             return;
         }
         if (currentIndex < questions.length - 1) {
@@ -92,191 +152,89 @@ export default function DiagnosticTest({ navigation }) {
     };
 
     const goToPrev = () => {
-        if (currentIndex > 0) {
-            animateTransition(() => setCurrentIndex(prev => prev - 1));
-        }
+        if (currentIndex > 0) animateTransition(() => setCurrentIndex(prev => prev - 1));
     };
 
-    const handleSubmit = async () => {
-        try {
-            setSubmitting(true);
-            const token = await AsyncStorage.getItem('accessToken');
-
-            const answersArray = Object.entries(answers).map(([id, answer]) => ({
-                id: parseInt(id),
-                answer: answer
-            }));
-
-            const response = await axios.post(
-                `${ASSESSMENT_URL}/assessment/submit/`,
-                { test_id: testData.test_id, answers: answersArray },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-
-            const result = response.data;
-
-            // Save test count to AsyncStorage for Home screen stats
-            const prevCount = parseInt(await AsyncStorage.getItem('testsCompleted') || '0');
-            await AsyncStorage.setItem('testsCompleted', String(prevCount + 1));
-
-            navigation.replace('TestResult', {
-                dayNumber,
-                totalDays,
-                onboardingFinished: result.onboarding_finished,
-                totalQuestions: questions.length,
-                mcqCount: questions.filter(q => q.type === 'mcq').length,
-            });
-
-        } catch (error) {
-            console.error('Submit error:', error.response?.data || error.message);
-            Alert.alert('Submission Failed', 'Could not submit. Please try again.');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    // ── Loading ──
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
                 <View style={styles.loadingCard}>
-                    <Text style={styles.loadingEmoji}>🧠</Text>
-                    <ActivityIndicator size="large" color="#9788FB" style={{ marginVertical: 16 }} />
-                    <Text style={styles.loadingTitle}>Building Day {dayNumber} Test</Text>
-                    <Text style={styles.loadingSubText}>AI is crafting questions for you ✨</Text>
+                    <ActivityIndicator size="large" color="#9788FB" />
+                    <Text style={styles.loadingTitle}>Preparing Test {dayNumber}/3</Text>
+                    <Text style={styles.loadingSubText}>Evaluating your {dayNumber === 1 ? 'Fundamentals' : dayNumber === 2 ? 'Core Logic' : 'Advanced Application'}</Text>
                 </View>
-            </View>
-        );
-    }
-
-    if (questions.length === 0) {
-        return (
-            <View style={styles.loadingContainer}>
-                <Text style={styles.loadingTitle}>No questions found.</Text>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Text style={styles.backBtnText}>Go Back</Text>
-                </TouchableOpacity>
             </View>
         );
     }
 
     const currentQuestion = questions[currentIndex];
-    const isMCQ = currentQuestion.type === 'mcq';
+    const isMCQ = currentQuestion?.type === 'mcq';
     const progress = ((currentIndex + 1) / questions.length) * 100;
-    const isAnswered = !!answers[String(currentQuestion.id)];
-    const isLastQuestion = currentIndex === questions.length - 1;
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#F8F9FE" />
-
-            {/* ── Header ── */}
+            <StatusBar barStyle="dark-content" />
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => {
-                    Alert.alert('Exit Test?', 'Your progress will be lost.', [
-                        { text: 'Stay', style: 'cancel' },
-                        { text: 'Exit', style: 'destructive', onPress: () => navigation.goBack() }
-                    ]);
-                }} style={styles.closeBtn}>
-                    <Text style={styles.closeBtnText}>✕</Text>
-                </TouchableOpacity>
-
-                <View style={styles.dayBadge}>
-                    <Text style={styles.dayBadgeText}>Test {dayNumber} of {totalDays}</Text>
-                </View>
-
-                <Text style={styles.questionCounter}>
-                    {currentIndex + 1} / {questions.length}
-                </Text>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}><Text style={styles.closeBtnText}>✕</Text></TouchableOpacity>
+                <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>Phase {dayNumber} of 3</Text></View>
+                <Text style={styles.questionCounter}>{currentIndex + 1}/{questions.length}</Text>
             </View>
 
-            {/* ── Progress Bar ── */}
             <View style={styles.progressBarBg}>
                 <Animated.View style={[styles.progressBarFill, { width: `${progress}%` }]} />
             </View>
 
-            {/* ── Questions ── */}
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
                 <Animated.View style={{ opacity: fadeAnim }}>
-
-                    {/* Type Badge */}
                     <View style={[styles.typeBadge, { backgroundColor: isMCQ ? '#EEF2FF' : '#FFF7ED' }]}>
-                        <Text style={[styles.typeBadgeText, { color: isMCQ ? '#9788FB' : '#F97316' }]}>
-                            {isMCQ ? '⚡ Multiple Choice' : '✍️ Descriptive'}
-                        </Text>
+                        <Text style={[styles.typeBadgeText, { color: isMCQ ? '#9788FB' : '#F97316' }]}>{isMCQ ? 'Multiple Choice' : 'Descriptive'}</Text>
                     </View>
+                    <Text style={styles.questionText}>{currentQuestion?.question}</Text>
 
-                    <Text style={styles.questionText}>{currentQuestion.question}</Text>
-
-                    {/* MCQ Options */}
-                    {isMCQ && currentQuestion.options?.map((option, idx) => {
-                        const letter = option.charAt(0);
-                        const isSelected = answers[String(currentQuestion.id)] === letter;
-                        return (
+                    {isMCQ ? (
+                        currentQuestion.options?.map((option, idx) => (
                             <TouchableOpacity
                                 key={idx}
-                                style={[styles.optionBtn, isSelected && styles.optionBtnSelected]}
+                                style={[styles.optionBtn, answers[String(currentQuestion.id)] === option.charAt(0) && styles.optionBtnSelected]}
                                 onPress={() => handleSelectOption(currentQuestion.id, option)}
-                                activeOpacity={0.7}
                             >
-                                <View style={[styles.optionLetter, isSelected && styles.optionLetterSelected]}>
-                                    <Text style={[styles.optionLetterText, isSelected && styles.optionLetterTextSelected]}>
-                                        {letter}
-                                    </Text>
+                                <View style={[styles.optionLetter, answers[String(currentQuestion.id)] === option.charAt(0) && styles.optionLetterSelected]}>
+                                    <Text style={[styles.optionLetterText, answers[String(currentQuestion.id)] === option.charAt(0) && styles.optionLetterTextSelected]}>{option.charAt(0)}</Text>
                                 </View>
-                                <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                                    {option.length > 3 ? option.substring(3) : option}
-                                </Text>
+                                <Text style={styles.optionText}>{option.substring(3)}</Text>
                             </TouchableOpacity>
-                        );
-                    })}
-
-                    {/* Descriptive */}
-                    {!isMCQ && (
+                        ))
+                    ) : (
                         <View style={styles.descriptiveContainer}>
                             <TextInput
                                 style={styles.descriptiveInput}
                                 multiline
-                                placeholder="Write your answer here..."
-                                placeholderTextColor="#CBD5E1"
+                                placeholder="Write your detailed answer..."
                                 value={answers[String(currentQuestion.id)] || ''}
                                 onChangeText={(text) => handleDescriptiveAnswer(currentQuestion.id, text)}
-                                textAlignVertical="top"
                             />
-                            <Text style={styles.charCount}>
-                                {(answers[String(currentQuestion.id)] || '').length} chars
-                            </Text>
                         </View>
                     )}
-
                 </Animated.View>
             </ScrollView>
 
-            {/* ── Nav Buttons ── */}
             <View style={styles.navRow}>
                 {currentIndex > 0 && (
-                    <TouchableOpacity style={styles.prevBtn} onPress={goToPrev}>
-                        <Text style={styles.prevBtnText}>← Back</Text>
-                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.prevBtn} onPress={goToPrev}><Text style={styles.prevBtnText}>Back</Text></TouchableOpacity>
                 )}
                 <TouchableOpacity
-                    style={[
-                        styles.nextBtn,
-                        !isAnswered && styles.nextBtnDisabled,
-                        currentIndex === 0 && { flex: 1 }
-                    ]}
+                    style={[styles.nextBtn, !answers[String(currentQuestion?.id)] && styles.nextBtnDisabled]}
                     onPress={goToNext}
                     disabled={submitting}
                 >
-                    {submitting
-                        ? <ActivityIndicator color="#FFF" />
-                        : <Text style={styles.nextBtnText}>{isLastQuestion ? '✓ Submit Test' : 'Next →'}</Text>
-                    }
+                    {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.nextBtnText}>{currentIndex === questions.length - 1 ? 'Finish Test' : 'Next'}</Text>}
                 </TouchableOpacity>
             </View>
         </SafeAreaView>
     );
 }
+
+// ... styles remain same ...
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },

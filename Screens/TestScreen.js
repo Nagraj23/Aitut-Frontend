@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    StatusBar, ActivityIndicator, Alert
+    StatusBar, ActivityIndicator, TextInput, Alert, Modal
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,32 +14,24 @@ const STATUS_CONFIG = {
 };
 
 export default function TestScreen({ navigation }) {
-    const [testSeries, setTestSeries] = useState([]);
+    const [basicCount, setBasicCount] = useState(0);
+    const [customTests, setCustomTests] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // ✅ Modal state for creating a new custom test
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [customSubject, setCustomSubject] = useState('');
 
     useFocusEffect(useCallback(() => { loadTests(); }, []));
 
     const loadTests = async () => {
         setLoading(true);
         try {
-            // Load the basic 3-test series progress
             const count = parseInt(await AsyncStorage.getItem('testsCompleted') || '0');
-            const customTestsStr = await AsyncStorage.getItem('customTests');
-            const customTests = customTestsStr ? JSON.parse(customTestsStr) : [];
+            setBasicCount(count);
 
-            // Build the basic series
-            const basicSeries = {
-                id: 'basic',
-                label: 'Basic Assessment',
-                description: '3-part diagnostic test series for your profile',
-                testsCompleted: count,
-                totalTests: 3,
-                isBasic: true,
-                status: count >= 3 ? 'completed' : count > 0 ? 'pending' : 'pending',
-                results: [],
-            };
-
-            setTestSeries([basicSeries, ...customTests]);
+            const customStr = await AsyncStorage.getItem('customTests');
+            setCustomTests(customStr ? JSON.parse(customStr) : []);
         } catch (e) {
             console.log('Load tests error:', e);
         } finally {
@@ -47,77 +39,156 @@ export default function TestScreen({ navigation }) {
         }
     };
 
-    const handleCreateTest = () => {
-        navigation.navigate('TestInput', { testLabel: `Custom Test ${testSeries.length}` });
+    // ✅ FIX: Custom test gets its own subject label and isCustomTest=true flag
+    // This prevents TestInput from treating it as a continuation of the basic series
+    const handleCreateCustomTest = () => {
+        const subject = customSubject.trim();
+        if (!subject) {
+            Alert.alert('Subject Required', 'Please enter a subject for the custom test.');
+            return;
+        }
+        setShowCreateModal(false);
+        setCustomSubject('');
+        navigation.navigate('TestInput', {
+            testLabel: subject,
+            isCustomTest: true,   // ← KEY FLAG: tells TestInput this is standalone
+        });
     };
 
-    const renderTestCard = (item) => {
+    const basicProgress = Math.min((basicCount / 3) * 100, 100);
+    const basicStatus = basicCount >= 3 ? 'completed' : 'pending';
+    const basicCfg = STATUS_CONFIG[basicStatus];
+
+    const renderBasicCard = () => (
+        <View style={styles.testCard}>
+            <View style={styles.testCardHeader}>
+                <View style={styles.testIconBox}>
+                    <Text style={styles.testIcon}>🎯</Text>
+                </View>
+                <View style={styles.testInfo}>
+                    <Text style={styles.testLabel}>Basic Assessment</Text>
+                    <Text style={styles.testDesc}>3-part diagnostic for your profile</Text>
+                </View>
+                <View style={[styles.statusPill, { backgroundColor: basicCfg.bg }]}>
+                    <Text style={[styles.statusPillText, { color: basicCfg.color }]}>
+                        {basicCfg.label}
+                    </Text>
+                </View>
+            </View>
+
+            <View style={styles.progressRow}>
+                <Text style={styles.progressText}>{basicCount}/3 tests completed</Text>
+                <Text style={[styles.progressPct, { color: basicCfg.color }]}>
+                    {Math.round(basicProgress)}%
+                </Text>
+            </View>
+            <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, {
+                    width: `${basicProgress}%`,
+                    backgroundColor: basicCfg.color,
+                }]} />
+            </View>
+
+            <View style={styles.dotsRow}>
+                {[1, 2, 3].map(n => (
+                    <View
+                        key={n}
+                        style={[
+                            styles.dot,
+                            n <= basicCount ? styles.dotDone : styles.dotEmpty,
+                        ]}
+                    >
+                        <Text style={styles.dotText}>{n <= basicCount ? '✓' : n}</Text>
+                    </View>
+                ))}
+            </View>
+
+            <View style={styles.testActions}>
+                {basicStatus !== 'completed' ? (
+                    <TouchableOpacity
+                        style={styles.continueBtn}
+                        onPress={() => navigation.navigate('TestInput', {
+                            testLabel: 'Basic Assessment',
+                            isCustomTest: false, // ← Tells TestInput to continue the series
+                        })}
+                    >
+                        <Text style={styles.continueBtnText}>
+                            {basicCount === 0 ? 'Start Test 1' : `Continue Test ${basicCount + 1} →`}
+                        </Text>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity
+                        style={styles.resultBtn}
+                        onPress={() => navigation.navigate('TestResult', {
+                            dayNumber: basicCount,
+                            totalDays: 3,
+                            onboardingFinished: true,
+                            totalQuestions: 10,
+                            mcqCount: 6,
+                        })}
+                    >
+                        <Text style={styles.resultBtnText}>View Results →</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        </View>
+    );
+
+    const renderCustomCard = (item, index) => {
         const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
-        const progress = item.isBasic
+        const progress = item.totalTests > 0
             ? (item.testsCompleted / item.totalTests) * 100
-            : (item.testsCompleted / item.totalTests) * 100;
+            : 0;
 
         return (
-            <View key={item.id} style={styles.testCard}>
-                {/* Header */}
+            <View key={`custom-${index}`} style={styles.testCard}>
                 <View style={styles.testCardHeader}>
-                    <View style={styles.testIconBox}>
-                        <Text style={styles.testIcon}>{item.isBasic ? '🎯' : '📋'}</Text>
+                    <View style={[styles.testIconBox, { backgroundColor: '#FFF7ED' }]}>
+                        <Text style={styles.testIcon}>📋</Text>
                     </View>
                     <View style={styles.testInfo}>
                         <Text style={styles.testLabel}>{item.label}</Text>
-                        <Text style={styles.testDesc} numberOfLines={1}>{item.description}</Text>
+                        <Text style={styles.testDesc}>Custom test · {item.totalTests} question{item.totalTests !== 1 ? 's' : ''}</Text>
                     </View>
                     <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
                         <Text style={[styles.statusPillText, { color: cfg.color }]}>{cfg.label}</Text>
                     </View>
                 </View>
 
-                {/* Progress */}
-                <View style={styles.progressRow}>
-                    <Text style={styles.progressText}>
-                        {item.testsCompleted}/{item.totalTests} tests completed
-                    </Text>
-                    <Text style={[styles.progressPct, { color: cfg.color }]}>
-                        {Math.round(progress)}%
-                    </Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, {
-                        width: `${progress}%`,
-                        backgroundColor: cfg.color
-                    }]} />
-                </View>
+                {item.totalTests > 0 && (
+                    <>
+                        <View style={styles.progressRow}>
+                            <Text style={styles.progressText}>
+                                {item.testsCompleted}/{item.totalTests} completed
+                            </Text>
+                            <Text style={[styles.progressPct, { color: cfg.color }]}>
+                                {Math.round(progress)}%
+                            </Text>
+                        </View>
+                        <View style={styles.progressBarBg}>
+                            <View style={[styles.progressBarFill, {
+                                width: `${progress}%`,
+                                backgroundColor: cfg.color,
+                            }]} />
+                        </View>
+                    </>
+                )}
 
-                {/* Actions */}
                 <View style={styles.testActions}>
-                    {item.status !== 'completed' && (
+                    {item.status !== 'completed' ? (
                         <TouchableOpacity
                             style={styles.continueBtn}
-                            onPress={() => {
-                                if (item.isBasic) {
-                                    navigation.navigate('TestInput', { testLabel: 'Basic Assessment' });
-                                } else {
-                                    navigation.navigate('TestInput', { testLabel: item.label });
-                                }
-                            }}
-                        >
-                            <Text style={styles.continueBtnText}>
-                                {item.testsCompleted === 0 ? 'Start Test' : 'Continue →'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                    {item.status === 'completed' && (
-                        <TouchableOpacity
-                            style={styles.resultBtn}
-                            onPress={() => navigation.navigate('TestResult', {
-                                dayNumber: item.testsCompleted,
-                                totalDays: item.totalTests,
-                                onboardingFinished: item.testsCompleted >= item.totalTests,
-                                totalQuestions: 10,
-                                mcqCount: 6,
+                            onPress={() => navigation.navigate('TestInput', {
+                                testLabel: item.label,
+                                isCustomTest: true, // ← Always custom for these
                             })}
                         >
+                            <Text style={styles.continueBtnText}>
+                                {item.testsCompleted === 0 ? 'Start Test' : 'Retake →'}
+                            </Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity style={styles.resultBtn}>
                             <Text style={styles.resultBtnText}>View Results →</Text>
                         </TouchableOpacity>
                     )}
@@ -139,7 +210,7 @@ export default function TestScreen({ navigation }) {
                     <Text style={styles.headerTitle}>My Tests</Text>
                     <Text style={styles.headerSub}>All your assessment series</Text>
                 </View>
-                <TouchableOpacity style={styles.addBtn} onPress={handleCreateTest}>
+                <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreateModal(true)}>
                     <Text style={styles.addBtnText}>+ New</Text>
                 </TouchableOpacity>
             </View>
@@ -147,20 +218,71 @@ export default function TestScreen({ navigation }) {
             {loading ? (
                 <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 50 }} />
             ) : (
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {/* Basic assessment series (always shown first) */}
+                    {renderBasicCard()}
 
-                    {testSeries.map(renderTestCard)}
+                    {/* Custom test cards */}
+                    {customTests.map((item, i) => renderCustomCard(item, i))}
 
-                    {/* Create new test CTA */}
-                    <TouchableOpacity style={styles.newTestCard} onPress={handleCreateTest}>
+                    {/* CTA to create a new custom test */}
+                    <TouchableOpacity
+                        style={styles.newTestCard}
+                        onPress={() => setShowCreateModal(true)}
+                    >
                         <Text style={styles.newTestIcon}>➕</Text>
                         <Text style={styles.newTestTitle}>Create Custom Test</Text>
-                        <Text style={styles.newTestSub}>Test yourself on any subject, anytime</Text>
+                        <Text style={styles.newTestSub}>
+                            Test yourself on any subject — completely separate from the basic series
+                        </Text>
                     </TouchableOpacity>
 
                     <View style={{ height: 40 }} />
                 </ScrollView>
             )}
+
+            {/* ✅ Create custom test modal */}
+            <Modal
+                visible={showCreateModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowCreateModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>New Custom Test</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Enter the subject or topic you want to be tested on.
+                            This is independent of your basic 3-test series.
+                        </Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            placeholder="e.g. Database Management, React Native..."
+                            placeholderTextColor="#94A3B8"
+                            value={customSubject}
+                            onChangeText={setCustomSubject}
+                            autoFocus
+                        />
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={styles.modalCancelBtn}
+                                onPress={() => { setShowCreateModal(false); setCustomSubject(''); }}
+                            >
+                                <Text style={styles.modalCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.modalCreateBtn}
+                                onPress={handleCreateCustomTest}
+                            >
+                                <Text style={styles.modalCreateText}>Start Test →</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -217,6 +339,15 @@ const styles = StyleSheet.create({
     progressBarBg: { height: 5, backgroundColor: '#F0F0F0', borderRadius: 3, marginBottom: 14 },
     progressBarFill: { height: 5, borderRadius: 3 },
 
+    dotsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+    dot: {
+        width: 32, height: 32, borderRadius: 16,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    dotDone: { backgroundColor: '#4F46E5' },
+    dotEmpty: { backgroundColor: '#F0F0F0' },
+    dotText: { fontSize: 12, fontWeight: '800', color: '#FFF' },
+
     testActions: { flexDirection: 'row', gap: 10 },
     continueBtn: {
         flex: 1, backgroundColor: '#4F46E5', padding: 12,
@@ -236,5 +367,33 @@ const styles = StyleSheet.create({
     },
     newTestIcon: { fontSize: 32, marginBottom: 10 },
     newTestTitle: { fontSize: 16, fontWeight: '700', color: '#1A1A1A' },
-    newTestSub: { fontSize: 12, color: '#94A3B8', marginTop: 4, textAlign: 'center' },
+    newTestSub: { fontSize: 12, color: '#94A3B8', marginTop: 4, textAlign: 'center', lineHeight: 18 },
+
+    // Modal
+    modalOverlay: {
+        flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalCard: {
+        backgroundColor: '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+        padding: 28, paddingBottom: 40,
+    },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: '#1A1A1A', marginBottom: 8 },
+    modalSubtitle: { fontSize: 13, color: '#64748B', lineHeight: 20, marginBottom: 20 },
+    modalInput: {
+        backgroundColor: '#F8F9FE', borderRadius: 14, paddingHorizontal: 16,
+        paddingVertical: 14, fontSize: 15, color: '#1A1A1A',
+        borderWidth: 1.5, borderColor: '#E2E8F0', marginBottom: 20,
+    },
+    modalActions: { flexDirection: 'row', gap: 12 },
+    modalCancelBtn: {
+        flex: 1, padding: 14, borderRadius: 14,
+        backgroundColor: '#F1F5F9', alignItems: 'center',
+    },
+    modalCancelText: { fontWeight: '700', color: '#64748B', fontSize: 14 },
+    modalCreateBtn: {
+        flex: 1, padding: 14, borderRadius: 14,
+        backgroundColor: '#4F46E5', alignItems: 'center',
+    },
+    modalCreateText: { fontWeight: '800', color: '#FFF', fontSize: 14 },
 });
