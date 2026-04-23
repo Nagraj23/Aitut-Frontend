@@ -7,10 +7,10 @@ import {
 import { AUTH_URL } from "../Constants/Api";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
-
+// computercouncil00@gmail.com
 const ROLES = [
     { label: "Student", value: "STUDENT", icon: "🎓" },
-    { label: "Teacher", value: "TEACHER", icon: "📖" },
+    { label: "Individual", value: "INDIVIDUAL", icon: "📖" },
     { label: "TPO", value: "TPO", icon: "🏢" },
 ];
 
