@@ -1,78 +1,33 @@
-import React, { useContext, useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-    View, Text, ScrollView, StyleSheet,
-    TouchableOpacity, ActivityIndicator, RefreshControl
+    View, Text, StyleSheet, ScrollView,
+    TouchableOpacity, StatusBar, ActivityIndicator,
+    RefreshControl
 } from 'react-native';
-import { AuthContext } from '../context/AuthContext';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ASSESSMENT_URL } from '../Constants/Api';
 import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen({ navigation }) {
-    const { refreshIsComplete } = useContext(AuthContext);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [currentRoadmap, setCurrentRoadmap] = useState(null);
     const [user, setUser] = useState(null);
     const [testsCompleted, setTestsCompleted] = useState(0);
-    const [assessmentStatus, setAssessmentStatus] = useState(null);
-    const [isProfileComplete, setIsProfileComplete] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-    // ✅ FIX: Prevent roadmap API from being called every single focus event.
-    // Only re-fetch if data is stale (older than 60 seconds).
-    const lastFetchedAt = useRef(null);
-    const CACHE_TTL_MS = 60_000;
+    useFocusEffect(useCallback(() => {
+        loadData();
+    }, []));
 
-    const loadData = async (showRefresh = false) => {
-        if (showRefresh) setRefreshing(true);
+    const loadData = async (isRefresh = false) => {
+        if (isRefresh) setRefreshing(true);
         else setLoading(true);
 
         try {
-            const detailsStr = await AsyncStorage.getItem('userDetails');
-            if (!detailsStr) return;
-
-            const userData = JSON.parse(detailsStr);
-            setUser(userData);
-
-            // Profile completion — handle multiple field name variants from backend
-            const storedComplete = await AsyncStorage.getItem('isComplete');
-            const complete =
-                storedComplete === 'true' ||
-                userData?.isComplete === true ||
-                userData?.is_complete === true ||
-                userData?.complete === true;
-            setIsProfileComplete(complete);
+            const details = await AsyncStorage.getItem('userDetails');
+            if (details) setUser(JSON.parse(details));
 
             const count = parseInt(await AsyncStorage.getItem('testsCompleted') || '0');
             setTestsCompleted(count);
-
-            // ✅ FIX: Skip roadmap fetch if recently loaded (unless manual refresh)
-            const now = Date.now();
-            const isStale = !lastFetchedAt.current || (now - lastFetchedAt.current > CACHE_TTL_MS);
-            if (!showRefresh && !isStale) {
-                return; // Use existing state — no redundant API call
-            }
-
-            const token = await AsyncStorage.getItem('accessToken');
-            try {
-                const res = await axios.get(
-                    `${ASSESSMENT_URL}/api/roadmaps/latest/${userData.id}/`,
-                    { headers: { Authorization: `Bearer ${token}` } }
-                );
-                if (res.data?.exists !== false) {
-                    setCurrentRoadmap(res.data);
-                    setAssessmentStatus('complete');
-                } else {
-                    setAssessmentStatus(count >= 3 ? 'complete' : 'incomplete');
-                    setCurrentRoadmap(null);
-                }
-                lastFetchedAt.current = Date.now();
-            } catch {
-                setAssessmentStatus(count >= 3 ? 'complete' : 'incomplete');
-                setCurrentRoadmap(null);
-                lastFetchedAt.current = Date.now();
-            }
         } catch (e) {
             console.log('Home load error:', e.message);
         } finally {
@@ -81,252 +36,345 @@ export default function HomeScreen({ navigation }) {
         }
     };
 
-    useFocusEffect(useCallback(() => {
-        loadData();
-        refreshIsComplete?.();
-    }, []));
+    const allTestsDone = testsCompleted >= 3;
+    const testsLeft = 3 - testsCompleted;
+    const firstName = user?.name?.split(' ')[0] || 'there';
 
-    const handleStartTest = () => navigation.navigate('TestInput', { testLabel: 'Basic Assessment' });
-
-    const handleRoadmapPress = () =>
-        navigation.navigate('Roadmap', { roadmapData: currentRoadmap, userId: user?.id });
-
-    // ✅ FIX: AI Tutor is a TAB inside AppTabs, not a standalone stack screen.
-    // Navigate to the tab navigator and specify the tab screen name.
-    const handleAITutor = () => {
-        navigation.navigate('Main', { screen: 'AI-Tut' });
+    const getGreeting = () => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Good Morning';
+        if (h < 17) return 'Good Afternoon';
+        return 'Good Evening';
     };
 
-    const renderMainCard = () => {
-        if (loading) return (
-            <View style={[styles.card, { justifyContent: 'center', height: 180 }]}>
-                <ActivityIndicator color="#FFF" size="large" />
+    const getInitials = (name) => {
+        if (!name) return 'U';
+        const parts = name.trim().split(' ');
+        return parts.length >= 2
+            ? (parts[0][0] + parts[1][0]).toUpperCase()
+            : parts[0][0].toUpperCase();
+    };
+
+    if (loading) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#9788FB" />
             </View>
         );
+    }
 
-        if (assessmentStatus === 'complete' && currentRoadmap) return (
-            <TouchableOpacity style={styles.card} onPress={handleRoadmapPress} activeOpacity={0.9}>
-                <View style={styles.cardHeader}>
-                    <Text style={styles.cardLabel}>MY ROADMAP</Text>
-                    <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>● Active</Text>
-                    </View>
-                </View>
-                <Text style={styles.cardTitle} numberOfLines={1}>
-                    {currentRoadmap.title || 'Your Learning Path'}
-                </Text>
-                {currentRoadmap.overview && (
-                    <Text style={styles.cardOverview} numberOfLines={2}>{currentRoadmap.overview}</Text>
-                )}
-                <Text style={styles.dayText}>Progress: {currentRoadmap.progress || 0}%</Text>
-                <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, { width: `${currentRoadmap.progress || 0}%` }]} />
-                </View>
-                <View style={styles.button}>
-                    <Text style={styles.buttonText}>Open Roadmap →</Text>
-                </View>
-            </TouchableOpacity>
-        );
+    return (
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+            <StatusBar backgroundColor="#9788FB" barStyle="light-content" />
 
-        if (assessmentStatus === 'incomplete' && testsCompleted > 0) {
-            const left = 3 - testsCompleted;
-            return (
-                <View style={[styles.card, { backgroundColor: '#4F46E5' }]}>
-                    <View style={styles.cardHeader}>
-                        <Text style={styles.cardLabel}>ASSESSMENT IN PROGRESS</Text>
-                        <Text style={[styles.cardLabel, { color: '#FFF' }]}>{testsCompleted}/3</Text>
-                    </View>
-                    <Text style={styles.cardTitle}>Unlock Your Roadmap</Text>
-                    <Text style={styles.cardOverview}>
-                        {left} test{left !== 1 ? 's' : ''} remaining
+            {/* ── Purple Header ── */}
+            <View style={styles.header}>
+                <View>
+                    <Text style={styles.greeting}>{getGreeting()} 👋</Text>
+                    <Text style={styles.userName}>Hello, {firstName}!</Text>
+                    <Text style={styles.userSubtitle}>
+                        {allTestsDone
+                            ? 'Keep up the great work!'
+                            : "Let's complete your assessment"}
                     </Text>
-                    <View style={styles.miniDotsRow}>
-                        {[1, 2, 3].map(n => (
-                            <View key={n} style={[styles.miniDot, n <= testsCompleted && styles.miniDotDone]} />
-                        ))}
+                </View>
+                <View style={styles.headerRight}>
+                    <View style={styles.streakBox}>
+                        <Text style={styles.streakText}>📝 {testsCompleted}/3</Text>
                     </View>
-                    <TouchableOpacity style={styles.button} onPress={handleStartTest}>
-                        <Text style={[styles.buttonText, { color: '#4F46E5' }]}>
-                            Continue Test {testsCompleted + 1} →
+                    <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
+                    </View>
+                </View>
+            </View>
+
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={() => loadData(true)}
+                        colors={['#9788FB']}
+                        tintColor="#9788FB"
+                    />
+                }
+            >
+
+                {/* ── MAIN HERO CARD ────────────────────────────────────── */}
+
+                {allTestsDone ? (
+                    /* ✅ Roadmap unlocked */
+                    <TouchableOpacity
+                        style={[styles.heroCard, { backgroundColor: '#9788FB' }]}
+                        onPress={() => navigation.navigate('Roadmap')}
+                        activeOpacity={0.9}
+                    >
+                        <View style={styles.heroCardHeader}>
+                            <Text style={styles.heroCardLabel}>MY ROADMAP</Text>
+                            <View style={styles.activeBadge}>
+                                <Text style={styles.activeBadgeText}>● Active</Text>
+                            </View>
+                        </View>
+                        <Text style={styles.heroCardTitle}>Your Learning Path is Ready!</Text>
+                        <Text style={styles.heroCardSub}>
+                            All 3 diagnostic tests completed. Your AI-personalized roadmap awaits.
+                        </Text>
+                        <View style={styles.dotsRow}>
+                            {[1, 2, 3].map(n => (
+                                <View key={n} style={[styles.dot, styles.dotFilled]} />
+                            ))}
+                        </View>
+                        <View style={styles.heroBtn}>
+                            <Text style={[styles.heroBtnText, { color: '#9788FB' }]}>
+                                🗺️  Open Roadmap →
+                            </Text>
+                        </View>
+                    </TouchableOpacity>
+
+                ) : testsCompleted > 0 ? (
+                    /* 🔄 Assessment in progress */
+                    <View style={[styles.heroCard, { backgroundColor: '#4F46E5' }]}>
+                        <View style={styles.heroCardHeader}>
+                            <Text style={styles.heroCardLabel}>ASSESSMENT IN PROGRESS</Text>
+                            <Text style={[styles.heroCardLabel, { color: '#FFF', letterSpacing: 0 }]}>
+                                {testsCompleted}/3
+                            </Text>
+                        </View>
+                        <Text style={styles.heroCardTitle}>Unlock Your Roadmap</Text>
+                        <Text style={styles.heroCardSub}>
+                            {testsLeft} test{testsLeft !== 1 ? 's' : ''} remaining — keep going!
+                        </Text>
+                        <View style={styles.dotsRow}>
+                            {[1, 2, 3].map(n => (
+                                <View key={n} style={[styles.dot, n <= testsCompleted && styles.dotFilled]} />
+                            ))}
+                        </View>
+                        <TouchableOpacity
+                            style={styles.heroBtn}
+                            onPress={() => navigation.navigate('TestInput', { testLabel: 'Basic Assessment' })}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={[styles.heroBtnText, { color: '#4F46E5' }]}>
+                                Continue Test {testsCompleted + 1} →
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                ) : (
+                    /* 🚀 Not started */
+                    <View style={[styles.heroCard, { backgroundColor: '#6366F1' }]}>
+                        <Text style={styles.heroCardLabel}>GET STARTED</Text>
+                        <Text style={styles.heroCardTitle}>Start Your Assessment</Text>
+                        <Text style={styles.heroCardSub}>
+                            Take 3 diagnostic tests so the AI can build your personalized learning roadmap.
+                        </Text>
+                        <View style={styles.dotsRow}>
+                            {[1, 2, 3].map(n => <View key={n} style={styles.dot} />)}
+                        </View>
+                        <TouchableOpacity
+                            style={styles.heroBtn}
+                            onPress={() => navigation.navigate('TestInput', { testLabel: 'Basic Assessment' })}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={[styles.heroBtnText, { color: '#6366F1' }]}>Begin Test 1 →</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* ── Stats Row ── */}
+                <Text style={styles.sectionHeader}>Your Progress</Text>
+                <View style={styles.statsRow}>
+                    <TouchableOpacity
+                        style={styles.statBox}
+                        onPress={() => navigation.navigate('TestScreen')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.statIcon}>📝</Text>
+                        <Text style={styles.statValue}>{testsCompleted}</Text>
+                        <Text style={styles.statLabel}>Tests Done</Text>
+                        {testsCompleted > 0 && (
+                            <Text style={styles.tapHint}>Tap to view →</Text>
+                        )}
+                    </TouchableOpacity>
+
+                    <View style={styles.statBox}>
+                        <Text style={styles.statIcon}>🎯</Text>
+                        <Text style={styles.statValue}>{Math.max(0, 3 - testsCompleted)}</Text>
+                        <Text style={styles.statLabel}>Tests Left</Text>
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.statBox}
+                        onPress={() => navigation.navigate('Roadmap')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.statIcon}>🗺️</Text>
+                        <Text style={[styles.statValue, { fontSize: 16 }]}>
+                            {allTestsDone ? '✅' : '🔒'}
+                        </Text>
+                        <Text style={styles.statLabel}>Roadmap</Text>
+                        <Text style={[styles.tapHint, { color: allTestsDone ? '#9788FB' : '#CBD5E1' }]}>
+                            {allTestsDone ? 'Tap to open →' : 'Locked'}
                         </Text>
                     </TouchableOpacity>
                 </View>
-            );
-        }
 
-        if (isProfileComplete) return (
-            <View style={[styles.card, { backgroundColor: '#6366F1' }]}>
-                <Text style={styles.cardLabel}>READY TO BEGIN</Text>
-                <Text style={styles.cardTitle}>Start Your Assessment</Text>
-                <Text style={styles.cardOverview}>
-                    Take 3 diagnostic tests to unlock your personalized AI roadmap.
-                </Text>
-                <View style={styles.miniDotsRow}>
-                    {[1, 2, 3].map(n => <View key={n} style={styles.miniDot} />)}
+                {/* ── Quick Actions ── */}
+                <Text style={styles.sectionHeader}>Quick Actions</Text>
+                <View style={styles.actionsRow}>
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => navigation.navigate('EditLearningInfo')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.actionIcon}>🎓</Text>
+                        <Text style={styles.actionLabel}>Academic{'\n'}Info</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() =>
+                            allTestsDone
+                                ? navigation.navigate('Roadmap')
+                                : navigation.navigate('TestInput', { testLabel: 'Basic Assessment' })
+                        }
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.actionIcon}>{allTestsDone ? '🗺️' : '📋'}</Text>
+                        <Text style={styles.actionLabel}>
+                            {allTestsDone ? 'My\nRoadmap' : 'Take\nTest'}
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => navigation.navigate('Main', { screen: 'AI-Tut' })}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.actionIcon}>🤖</Text>
+                        <Text style={styles.actionLabel}>AI{'\n'}Tutor</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => navigation.navigate('TestScreen')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.actionIcon}>📊</Text>
+                        <Text style={styles.actionLabel}>All{'\n'}Tests</Text>
+                    </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.button} onPress={handleStartTest}>
-                    <Text style={[styles.buttonText, { color: '#6366F1' }]}>Begin Test 1 →</Text>
-                </TouchableOpacity>
-            </View>
-        );
 
-        return (
-            <View style={[styles.card, { backgroundColor: '#64748B' }]}>
-                <Text style={styles.cardLabel}>GET STARTED</Text>
-                <Text style={styles.cardTitle}>Complete Your Profile</Text>
-                <Text style={styles.cardOverview}>
-                    Add university & course details to unlock your AI diagnostic test.
-                </Text>
-                <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('EditLearningInfo')}>
-                    <Text style={[styles.buttonText, { color: '#64748B' }]}>Complete Profile →</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    };
-
-    return (
-        <ScrollView
-            style={styles.container}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-                <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={() => loadData(true)}
-                    colors={['#4F46E5']}
-                />
-            }
-        >
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.welcomeText}>
-                        Hello, {user?.name?.split(' ')[0] || 'there'}! 👋
-                    </Text>
-                    <Text style={styles.subText}>
-                        {assessmentStatus === 'complete'
-                            ? 'Keep up the great work!'
-                            : isProfileComplete
-                                ? 'Ready to take your test?'
-                                : "Let's set up your profile first"}
-                    </Text>
-                </View>
-                <View style={styles.streakBox}>
-                    <Text style={styles.streakText}>📝 {testsCompleted}/3</Text>
-                </View>
-            </View>
-
-            {renderMainCard()}
-
-            <Text style={styles.sectionHeader}>Your Progress</Text>
-            <View style={styles.statsRow}>
-                <TouchableOpacity
-                    style={styles.statBox}
-                    onPress={() => navigation.navigate('TestScreen')}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.statIcon}>📝</Text>
-                    <Text style={styles.statValue}>{testsCompleted}</Text>
-                    <Text style={styles.statLabel}>Tests Done</Text>
-                    {testsCompleted > 0 && <Text style={styles.tapHint}>Tap to view</Text>}
-                </TouchableOpacity>
-
-                <View style={styles.statBox}>
-                    <Text style={styles.statIcon}>🎯</Text>
-                    <Text style={styles.statValue}>{Math.max(0, 3 - testsCompleted)}</Text>
-                    <Text style={styles.statLabel}>Tests Left</Text>
-                </View>
-            </View>
-
-            <Text style={styles.sectionHeader}>Quick Actions</Text>
-            <View style={styles.actionsRow}>
-                <TouchableOpacity
-                    style={styles.actionCard}
-                    onPress={() => navigation.navigate('EditLearningInfo')}
-                >
-                    <Text style={styles.actionIcon}>🎓</Text>
-                    <Text style={styles.actionLabel}>Academic Info</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.actionCard}
-                    onPress={() =>
-                        assessmentStatus === 'complete' && currentRoadmap
-                            ? handleRoadmapPress()
-                            : handleStartTest()
-                    }
-                >
-                    <Text style={styles.actionIcon}>
-                        {assessmentStatus === 'complete' ? '🗺️' : '📋'}
-                    </Text>
-                    <Text style={styles.actionLabel}>
-                        {assessmentStatus === 'complete' ? 'My Roadmap' : 'Take Test'}
-                    </Text>
-                </TouchableOpacity>
-
-                {/* ✅ FIXED: navigates to the AI-Tut tab inside AppTabs */}
-                <TouchableOpacity style={styles.actionCard} onPress={handleAITutor}>
-                    <Text style={styles.actionIcon}>🤖</Text>
-                    <Text style={styles.actionLabel}>AI Tutor</Text>
-                </TouchableOpacity>
-            </View>
-
-            <View style={{ height: 40 }} />
-        </ScrollView>
+                <View style={{ height: 50 }} />
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FE', paddingHorizontal: 20 },
+    safeArea: { flex: 1, backgroundColor: '#9788FB' },
+    loadingContainer: {
+        flex: 1, justifyContent: 'center',
+        alignItems: 'center', backgroundColor: '#F8F9FE',
+    },
+
+    // ── Header ──────────────────────────────────────────────────────────────
     header: {
         flexDirection: 'row', justifyContent: 'space-between',
-        alignItems: 'center', marginTop: 55, marginBottom: 20,
+        alignItems: 'flex-start',
+        paddingHorizontal: 20, paddingTop: 6, paddingBottom: 22,
     },
-    welcomeText: { fontSize: 20, fontWeight: 'bold', color: '#1A1A1A' },
-    subText: { color: '#94A3B8', fontSize: 12, marginTop: 2 },
+    greeting: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '600' },
+    userName: { color: '#FFF', fontSize: 22, fontWeight: '800', marginTop: 3 },
+    userSubtitle: { color: 'rgba(255,255,255,0.60)', fontSize: 12, marginTop: 3 },
+    headerRight: { alignItems: 'flex-end', gap: 8 },
     streakBox: {
-        backgroundColor: '#FFF', paddingHorizontal: 14,
-        paddingVertical: 10, borderRadius: 14, elevation: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
     },
-    streakText: { fontWeight: 'bold', color: '#4F46E5', fontSize: 13 },
+    streakText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+    avatar: {
+        width: 44, height: 44, borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
 
-    card: {
-        backgroundColor: '#9788FB', padding: 22, borderRadius: 22,
-        elevation: 6, shadowColor: '#9788FB', shadowOpacity: 0.25, shadowRadius: 10,
+    // ── Scroll content ───────────────────────────────────────────────────────
+    scrollContent: {
+        backgroundColor: '#F8F9FE',
+        borderTopLeftRadius: 28, borderTopRightRadius: 28,
+        paddingTop: 24, paddingHorizontal: 16,
     },
-    cardHeader: {
+
+    // ── Hero Card ────────────────────────────────────────────────────────────
+    heroCard: {
+        borderRadius: 24, padding: 22, marginBottom: 26,
+        elevation: 8,
+        shadowColor: '#9788FB', shadowOpacity: 0.3, shadowRadius: 14,
+    },
+    heroCardHeader: {
         flexDirection: 'row', justifyContent: 'space-between',
-        alignItems: 'center', marginBottom: 8,
+        alignItems: 'center', marginBottom: 10,
     },
-    cardLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-    activeBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    heroCardLabel: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    },
+    activeBadge: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+    },
     activeBadgeText: { color: '#4ADE80', fontSize: 10, fontWeight: 'bold' },
-    cardTitle: { color: '#FFF', fontSize: 19, fontWeight: 'bold', marginBottom: 4 },
-    cardOverview: { color: 'rgba(255,255,255,0.78)', fontSize: 12, lineHeight: 18, marginBottom: 10 },
-    dayText: { color: '#E0E0E0', marginBottom: 6, fontSize: 12 },
-    progressBarBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3, marginBottom: 14 },
-    progressBarFill: { height: 6, backgroundColor: '#FFF', borderRadius: 3 },
-    button: { backgroundColor: '#FFF', padding: 13, borderRadius: 13, alignItems: 'center', marginTop: 4 },
-    buttonText: { color: '#9788FB', fontWeight: 'bold', fontSize: 14 },
-    miniDotsRow: { flexDirection: 'row', gap: 10, marginVertical: 12 },
-    miniDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.3)' },
-    miniDotDone: { backgroundColor: '#FFF' },
+    heroCardTitle: {
+        color: '#FFF', fontSize: 20, fontWeight: '800',
+        marginBottom: 6, lineHeight: 26,
+    },
+    heroCardSub: {
+        color: 'rgba(255,255,255,0.75)',
+        fontSize: 12, lineHeight: 18, marginBottom: 16,
+    },
+    dotsRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+    dot: {
+        width: 11, height: 11, borderRadius: 6,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    dotFilled: { backgroundColor: '#FFF' },
+    heroBtn: {
+        backgroundColor: '#FFF', paddingVertical: 13,
+        borderRadius: 14, alignItems: 'center',
+    },
+    heroBtnText: { fontWeight: '800', fontSize: 14 },
 
-    sectionHeader: { fontSize: 16, fontWeight: 'bold', marginTop: 22, marginBottom: 12, color: '#1A1A1A' },
-    statsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+    // ── Stats ────────────────────────────────────────────────────────────────
+    sectionHeader: {
+        fontSize: 15, fontWeight: '800',
+        color: '#1A1A1A', marginBottom: 12,
+    },
+    statsRow: { flexDirection: 'row', gap: 10, marginBottom: 26 },
     statBox: {
-        backgroundColor: '#FFF', flex: 1, padding: 18,
-        borderRadius: 18, alignItems: 'center', elevation: 2,
+        flex: 1, backgroundColor: '#FFF',
+        borderRadius: 18, padding: 14,
+        alignItems: 'center', elevation: 2,
+        shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6,
     },
     statIcon: { fontSize: 20, marginBottom: 5 },
-    statValue: { fontSize: 24, fontWeight: 'bold', color: '#1A1A1A' },
-    statLabel: { color: '#64748B', marginTop: 2, fontSize: 10, fontWeight: '600' },
-    tapHint: { fontSize: 9, color: '#4F46E5', marginTop: 3, fontWeight: '600' },
+    statValue: { fontSize: 22, fontWeight: '800', color: '#1A1A1A' },
+    statLabel: { color: '#64748B', fontSize: 10, fontWeight: '600', marginTop: 2 },
+    tapHint: { fontSize: 9, fontWeight: '700', marginTop: 4 },
 
-    actionsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+    // ── Quick Actions ─────────────────────────────────────────────────────────
+    actionsRow: { flexDirection: 'row', gap: 10 },
     actionCard: {
-        backgroundColor: '#FFF', flex: 1, padding: 14,
-        borderRadius: 16, alignItems: 'center', elevation: 2, paddingVertical: 18,
+        flex: 1, backgroundColor: '#FFF',
+        borderRadius: 18, paddingVertical: 18,
+        alignItems: 'center', elevation: 2,
+        shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6,
     },
     actionIcon: { fontSize: 24, marginBottom: 6 },
-    actionLabel: { fontSize: 10, fontWeight: '700', color: '#475569', textAlign: 'center' },
+    actionLabel: {
+        fontSize: 10, fontWeight: '700',
+        color: '#475569', textAlign: 'center', lineHeight: 14,
+    },
 });
