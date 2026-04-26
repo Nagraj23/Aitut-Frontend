@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
-    ScrollView, ActivityIndicator, Alert
+    ScrollView, ActivityIndicator, Alert, Keyboard
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { AUTH_URL } from '../Constants/Api';
 import { AuthContext } from '../context/AuthContext';
@@ -19,8 +18,8 @@ const COURSE_CATEGORIES = [
 ];
 
 const EditLearningInfo = ({ navigation }) => {
-    // 🔥 Added setUserData from context to update global state
-    const { refreshIsComplete, setUserData, userData } = useContext(AuthContext);
+    // 🔥 ALIGNED: Destructuring context functions and data
+    const { userData, userToken, updateUser, setIsComplete } = useContext(AuthContext);
 
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
@@ -34,101 +33,116 @@ const EditLearningInfo = ({ navigation }) => {
         courseDuration: '',
         dailyStudyHours: '',
     });
-    const [errors, setErrors] = useState({});
 
-    useEffect(() => { prefillForm(); }, []);
+    useEffect(() => {
+        prefillForm();
+    }, [userData]);
 
-    const prefillForm = async () => {
-        try {
-            const local = await AsyncStorage.getItem('userDetails');
-            if (local) {
-                const user = JSON.parse(local);
-                setFormData({
-                    university: user.university || '',
-                    college: user.college || '',
-                    department: user.department || '',
-                    targetCourse: user.targetCourse || '',
-                    courseDuration: user.courseDuration || '',
-                    dailyStudyHours: user.dailyStudyHours ? String(user.dailyStudyHours) : '',
-                });
-            }
-        } catch (e) {
-            console.log('Prefill error:', e);
-        } finally {
-            setFetching(false);
+    const prefillForm = () => {
+        if (userData) {
+            setFormData({
+                university: userData.university || '',
+                college: userData.college || '',
+                department: userData.department || '',
+                targetCourse: userData.currentLearning || '',
+                courseDuration: userData.courseDuration || '',
+                dailyStudyHours: userData.dailyStudyHours ? String(userData.dailyStudyHours) : '',
+            });
         }
+        setFetching(false);
     };
 
     const update = (key, value) => {
         setFormData(prev => ({ ...prev, [key]: value }));
-        if (errors[key]) setErrors(prev => ({ ...prev, [key]: null }));
     };
 
     const validate = () => {
-        const e = {};
-        if (!formData.targetCourse.trim()) e.targetCourse = 'Target course is required';
-        if (!formData.courseDuration) e.courseDuration = 'Please select course duration';
-        if (!formData.dailyStudyHours) e.dailyStudyHours = 'Daily study hours is required';
-        else {
-            const h = parseInt(formData.dailyStudyHours);
-            if (isNaN(h) || h < 1 || h > 24) e.dailyStudyHours = 'Must be between 1 and 24 hours';
+        if (!formData.targetCourse) {
+            Alert.alert("Required", "Please select a target course/subject.");
+            return false;
         }
-        setErrors(e);
-        return Object.keys(e).length === 0;
+        if (!formData.courseDuration) {
+            Alert.alert("Required", "Please select your preparation duration.");
+            return false;
+        }
+        if (!formData.dailyStudyHours) {
+            Alert.alert("Required", "Please select daily study hours.");
+            return false;
+        }
+        return true;
     };
 
     const handleSave = async () => {
         if (!validate()) return;
-        setLoading(true);
-        try {
-            const token = await AsyncStorage.getItem('accessToken');
-            const details = await AsyncStorage.getItem('userDetails');
-            const user = JSON.parse(details);
 
+        Keyboard.dismiss();
+        setLoading(true);
+
+        try {
+            const userId = userData?.id;
+            if (!userId || !userToken) {
+                Alert.alert("Session Error", "Please log in again.");
+                return;
+            }
+
+            // 1. Prepare Payload - Ensuring keys match your Django Model
             const payload = {
-                university: formData.university.trim() || null,
-                college: formData.college.trim() || null,
-                department: formData.department.trim() || null,
-                targetCourse: formData.targetCourse.trim(),
+                university: formData.university.trim() || "Solapur University",
+                college: formData.college.trim() || "BMIT Solapur",
+                department: formData.department.trim() || "CSE",
+                currentLearning: formData.targetCourse,
                 courseDuration: formData.courseDuration,
                 dailyStudyHours: parseInt(formData.dailyStudyHours),
+                profile_complete: true // Matches backend column
             };
 
             const response = await axios.put(
-                `${AUTH_URL}/update-profile/learning/${user.id}`,
+                `${AUTH_URL}/update-profile/learning/${userId}`, // Added trailing slash just in case
                 payload,
-                { headers: { Authorization: `Bearer ${token}` } }
+                {
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
             );
 
-            if (response.data) {
-                // ✅ THE FIX: Ensure the key names match what HomeScreen expects
-                const merged = {
-                    ...user,
-                    ...payload,
-                    is_complete: true, // Force this to true on success
-                };
+            if (response.status === 200 || response.status === 201) {
 
-                // 1. Update Storage
-                await AsyncStorage.setItem('userDetails', JSON.stringify(merged));
+                // 2. SUCCESSFUL BACKEND UPDATE
+                // Now we force the Global Context to update
+                if (updateUser) {
+                    await updateUser({
+                        ...userData, // Keep existing fields
+                        ...payload,  // Overwrite with new info
+                        isComplete: true, // Force the UI flag to true
+                    });
+                }
 
-                // 2. Update Global Context State immediately
-                // This triggers the re-render in HomeScreen
-                setUserData(merged);
-
-                // 3. Trigger context refresh if you have a refresh function
-                if (refreshIsComplete) {
-                    await refreshIsComplete();
+                // 3. Double-check secondary flag in Context
+                if (setIsComplete) {
+                    setIsComplete(true);
                 }
 
                 Alert.alert(
-                    '✅ Profile Updated!',
-                    'Your academic info is saved. You can now start your diagnostic tests.',
-                    [{ text: 'Great!', onPress: () => navigation.navigate('Main') }] // Go to Main to see the change
+                    'Success 🎉',
+                    'Academic profile updated! You can now proceed to assessments.',
+                    [{
+                        text: 'Continue',
+                        onPress: () => {
+                            // Reset navigation to Home so it triggers a fresh render
+                            navigation.reset({
+                                index: 0,
+                                routes: [{ name: 'Main' }],
+                            });
+                        }
+                    }]
                 );
             }
         } catch (error) {
-            console.log("Update Error:", error);
-            Alert.alert('Error', 'Could not save your information.');
+            console.error("Update Profile Error:", error);
+            const errorMsg = error.response?.data?.message || "Check your internet connection.";
+            Alert.alert('Update Failed', errorMsg);
         } finally {
             setLoading(false);
         }
@@ -136,7 +150,7 @@ const EditLearningInfo = ({ navigation }) => {
 
     if (fetching) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FE' }}>
+            <View style={styles.loaderContainer}>
                 <ActivityIndicator size="large" color="#6366F1" />
             </View>
         );
@@ -149,18 +163,18 @@ const EditLearningInfo = ({ navigation }) => {
                     <Text style={styles.backIcon}>←</Text>
                 </TouchableOpacity>
                 <View>
-                    <Text style={styles.headerTitle}>Academic Info</Text>
-                    <Text style={styles.headerSubtitle}>BMIT | CSE Final Year</Text>
+                    <Text style={styles.headerTitle}>Update Learning</Text>
+                    <Text style={styles.headerSubtitle}>BMIT Solapur | {formData.department || 'Student'}</Text>
                 </View>
             </View>
 
             <View style={styles.formContainer}>
-                <SectionHeader title="🏛️ Institution" />
+                <SectionHeader title="🏛️ Institution Details" />
                 <InputField label="University" placeholder="Solapur University" value={formData.university} onChangeText={t => update('university', t)} />
-                <InputField label="College / Institute" placeholder="BMIT College" value={formData.college} onChangeText={t => update('college', t)} />
-                <InputField label="Branch / Department" placeholder="Computer Science" value={formData.department} onChangeText={t => update('department', t)} />
+                <InputField label="College" placeholder="BMIT College" value={formData.college} onChangeText={t => update('college', t)} />
+                <InputField label="Branch" placeholder="e.g. Computer Science" value={formData.department} onChangeText={t => update('department', t)} />
 
-                <SectionHeader title="📚 Course / Subject *" />
+                <SectionHeader title="🎯 Target Subject *" />
                 {formData.targetCourse ? (
                     <View style={styles.selectedCourseBox}>
                         <View style={styles.selectedCourseBadge}>
@@ -170,16 +184,23 @@ const EditLearningInfo = ({ navigation }) => {
                     </View>
                 ) : null}
 
-                {COURSE_CATEGORIES.map(cat => (
+                {!formData.targetCourse && COURSE_CATEGORIES.map(cat => (
                     <View key={cat.label} style={styles.categoryBlock}>
-                        <TouchableOpacity style={styles.categoryHeader} onPress={() => setExpandedCategory(expandedCategory === cat.label ? null : cat.label)}>
+                        <TouchableOpacity
+                            style={styles.categoryHeader}
+                            onPress={() => setExpandedCategory(expandedCategory === cat.label ? null : cat.label)}
+                        >
                             <Text style={styles.categoryLabel}>{cat.label}</Text>
                             <Text style={styles.categoryArrow}>{expandedCategory === cat.label ? '▲' : '▼'}</Text>
                         </TouchableOpacity>
                         {expandedCategory === cat.label && (
                             <View style={styles.chipsRow}>
                                 {cat.courses.map(course => (
-                                    <TouchableOpacity key={course} style={[styles.chip, formData.targetCourse === course && styles.chipActive]} onPress={() => { update('targetCourse', course); setExpandedCategory(null); }}>
+                                    <TouchableOpacity
+                                        key={course}
+                                        style={[styles.chip, formData.targetCourse === course && styles.chipActive]}
+                                        onPress={() => { update('targetCourse', course); setExpandedCategory(null); }}
+                                    >
                                         <Text style={[styles.chipText, formData.targetCourse === course && styles.chipTextActive]}>{course}</Text>
                                     </TouchableOpacity>
                                 ))}
@@ -188,7 +209,7 @@ const EditLearningInfo = ({ navigation }) => {
                     </View>
                 ))}
 
-                <SectionHeader title="📅 Course Duration *" />
+                <SectionHeader title="📅 Preparation Duration *" />
                 <View style={styles.chipsRow}>
                     {DURATION_OPTIONS.map(d => (
                         <TouchableOpacity key={d} style={[styles.chip, formData.courseDuration === d && styles.chipActive]} onPress={() => update('courseDuration', d)}>
@@ -197,7 +218,7 @@ const EditLearningInfo = ({ navigation }) => {
                     ))}
                 </View>
 
-                <SectionHeader title="⏰ Study Habit *" />
+                <SectionHeader title="⏰ Daily Study Target *" />
                 <View style={styles.hoursRow}>
                     {['1', '2', '3', '4', '5', '6'].map(h => (
                         <TouchableOpacity key={h} style={[styles.hourChip, formData.dailyStudyHours === h && styles.hourChipActive]} onPress={() => update('dailyStudyHours', h)}>
@@ -206,25 +227,29 @@ const EditLearningInfo = ({ navigation }) => {
                     ))}
                 </View>
 
-                <TouchableOpacity style={[styles.submitBtn, loading && { opacity: 0.7 }]} onPress={handleSave} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Complete Profile →</Text>}
+                <TouchableOpacity
+                    style={[styles.submitBtn, loading && { opacity: 0.7 }]}
+                    onPress={handleSave}
+                    disabled={loading}
+                >
+                    {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Confirm Learning Path →</Text>}
                 </TouchableOpacity>
             </View>
         </ScrollView>
     );
 };
 
-// ... Styles remain the same as your previous snippet ...
 const SectionHeader = ({ title }) => <Text style={styles.sectionHeader}>{title}</Text>;
-const InputField = ({ label, error, ...props }) => (
+const InputField = ({ label, ...props }) => (
     <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>{label}</Text>
-        <TextInput style={[styles.input, error && styles.inputError]} placeholderTextColor="#CBD5E1" {...props} />
+        <TextInput style={styles.input} placeholderTextColor="#94A3B8" {...props} />
     </View>
 );
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },
+    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: { backgroundColor: '#6366F1', paddingTop: 55, paddingBottom: 28, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
     backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
     backIcon: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },

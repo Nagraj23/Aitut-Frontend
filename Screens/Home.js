@@ -1,7 +1,7 @@
-import React, { useContext, useState, useCallback } from 'react';
+import React, { useContext, useState, useCallback, useEffect } from 'react';
 import {
     View, Text, ScrollView, StyleSheet, TouchableOpacity,
-    ActivityIndicator, RefreshControl, StatusBar, SafeAreaView
+    ActivityIndicator, RefreshControl, StatusBar, SafeAreaView, Alert, Dimensions
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { UserContext } from '../context/UserContext';
@@ -9,145 +9,201 @@ import { useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
 import { ASSESSMENT_URL } from '../Constants/Api';
 
-export default function HomeScreen({ navigation }) {
-    const { userData, userToken } = useContext(AuthContext);
-    const { roadmap, refreshRoadmap } = useContext(UserContext);
+const { width } = Dimensions.get('window');
 
-    const [loading, setLoading] = useState(true);
+export default function HomeScreen({ navigation }) {
+    // 1. Global Contexts
+    const {
+        userData,
+        userToken,
+        isComplete,
+        testCount,
+        hasRoadmap,
+        updateUser
+    } = useContext(AuthContext);
+
+    const { roadmap, refreshRoadmap, isDataLoading } = useContext(UserContext);
+
+    // 2. Local State - INITIALIZED WITH CONTEXT TO PREVENT FLICKER
+    // If context already has data, we don't show the big loading spinner
+    const [loading, setLoading] = useState(!userData);
     const [refreshing, setRefreshing] = useState(false);
 
-    // State to sync with your Django 'user-status' endpoint
     const [status, setStatus] = useState({
-        profile_complete: false,
-        test_count: 0,
-        is_ready_for_roadmap: false,
-        has_roadmap: false
+        profile_complete: isComplete,
+        test_count: testCount,
+        has_roadmap: hasRoadmap,
+        domain: userData?.department || 'Computer Science',
+        progress: 0
     });
 
     /**
-     * ✅ THE FIX: Hit the correct Django URL: /user-status/<id>/
-     * No extra '/api/' prefix as per your urlpatterns
+     * SYNC: Update local state immediately when Global Context changes
      */
-    const fetchProgress = async (showRefresh = false) => {
-        if (!userData?.id) return;
-        if (showRefresh) setRefreshing(true);
-        else setLoading(true);
+    useEffect(() => {
+        setStatus(prev => ({
+            ...prev,
+
+            test_count: testCount,
+            has_roadmap: hasRoadmap,
+            domain: userData?.department || prev.domain
+        }));
+    }, [isComplete, testCount, hasRoadmap, userData?.department]);
+
+    /**
+     * SYNC LOGIC: Background data refresh
+     */
+    const syncAllData = async (isManualRefresh = false) => {
+        if (!userData?.id || !userToken) return;
+
+        if (isManualRefresh) setRefreshing(true);
+        // We only set global loading if we have absolutely no data yet
+        else if (!status.profile_complete && !status.has_roadmap) setLoading(true);
 
         try {
-            const url = `${ASSESSMENT_URL}/user-status/${userData.id}/`;
-            const res = await axios.get(url, {
+            const res = await axios.get(`${ASSESSMENT_URL}/user-status/${userData.id}/`, {
                 headers: { Authorization: `Bearer ${userToken}` }
             });
 
-            if (res.data?.data) {
-                const backendData = res.data.data;
-                setStatus(backendData);
+            const backendData = res.data;
 
-                // If roadmap exists but context is empty, fetch it
-                if (backendData.has_roadmap && !roadmap) {
-                    await refreshRoadmap();
-                }
+            // Update State
+            setStatus(prev => ({
+                ...prev,
+
+                test_count: backendData.test_count,
+                has_roadmap: backendData.has_roadmap,
+                domain: backendData.domain || userData?.department,
+                progress: backendData.progress || 0
+            }));
+
+            // Sync back to AuthContext/AsyncStorage
+            if (updateUser) {
+                await updateUser({
+                    isComplete: backendData.profile_complete,
+                    testCount: backendData.test_count,
+                    hasRoadmap: backendData.has_roadmap
+                });
+            }
+
+            // Refresh roadmap content if backend says it exists
+            if (backendData.has_roadmap && refreshRoadmap) {
+                await refreshRoadmap();
             }
         } catch (e) {
-            console.error("Dashboard Sync Error:", e.message);
+            console.log("HomeScreen Sync Error:", e.message);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     };
 
-    // Auto-refresh when user navigates back to Home
     useFocusEffect(
         useCallback(() => {
-            fetchProgress();
-        }, [userData?.id, userData?.is_complete])
+            syncAllData();
+        }, [userToken, userData?.id])
     );
 
+    const handleGenerateRoadmap = async () => {
+        setLoading(true);
+        try {
+            const response = await axios.post(`${ASSESSMENT_URL}/roadmap/create/`, {
+                user_id: userData.id,
+                domain: status.domain,
+                role: 'student'
+            }, {
+                headers: { Authorization: `Bearer ${userToken}` }
+            });
+
+            if (response.status === 201 || response.status === 200) {
+                Alert.alert("Success 🎉", "Your AI Learning Roadmap is ready!");
+                if (updateUser) await updateUser({ hasRoadmap: true });
+                await syncAllData();
+            }
+        } catch (err) {
+            Alert.alert("Error", "Could not build roadmap. Please try again.");
+            setLoading(false);
+        }
+    };
+
     const renderMainCard = () => {
-        if (loading) {
+        // Only show spinner if we have NO valid status yet
+        if (loading && !refreshing && !status.profile_complete) {
             return (
-                <View style={[styles.card, styles.center]}>
-                    <ActivityIndicator color="#FFF" size="large" />
+                <View style={[styles.card, styles.center, { backgroundColor: '#F1F5F9' }]}>
+                    <ActivityIndicator color="#4F46E5" size="large" />
+                    <Text style={styles.syncText}>Preparing your dashboard...</Text>
                 </View>
             );
         }
 
-        // --- STEP 1: Profile Logic ---
-        // If local is_complete is false AND backend says profile not complete
-        if (!userData?.is_complete && !status.profile_complete) {
+        // --- PHASE 1: PROFILE ---
+        if (!status.profile_complete) {
             return (
                 <View style={[styles.card, { backgroundColor: '#64748B' }]}>
                     <Text style={styles.cardLabel}>STEP 1: ACCOUNT</Text>
                     <Text style={styles.cardTitle}>Complete Academic Info</Text>
-                    <Text style={styles.cardSub}>Set your university and course details at BMIT to unlock tests.</Text>
-                    <TouchableOpacity
-                        style={styles.whiteBtn}
-                        onPress={() => navigation.navigate('EditLearningInfo')}
-                    >
+                    <Text style={styles.cardSub}>Update your branch and university details to unlock AI features.</Text>
+                    <TouchableOpacity style={styles.whiteBtn} onPress={() => navigation.navigate('EditLearningInfo')}>
                         <Text style={[styles.btnText, { color: '#64748B' }]}>Finish Profile →</Text>
                     </TouchableOpacity>
                 </View>
             );
         }
 
-        // --- STEP 2: Diagnostic Logic (3 Tests) ---
-        if (!status.is_ready_for_roadmap && !status.has_roadmap) {
+        // --- PHASE 2: DIAGNOSTIC ---
+        if (status.test_count < 3) {
             return (
                 <View style={[styles.card, { backgroundColor: '#4F46E5' }]}>
                     <View style={styles.rowBetween}>
                         <Text style={styles.cardLabel}>STEP 2: DIAGNOSTIC</Text>
                         <Text style={styles.badgeText}>{status.test_count}/3 Done</Text>
                     </View>
-                    <Text style={styles.cardTitle}>Verify Skills</Text>
-                    <Text style={styles.cardSub}>Complete 3 diagnostic tests to generate your personalized AI roadmap.</Text>
-                    <TouchableOpacity
-                        style={styles.whiteBtn}
-                        onPress={() => navigation.navigate('DiagnosticTest')}
-                    >
+                    <Text style={styles.cardTitle}>Verify Your Skills</Text>
+                    <Text style={styles.cardSub}>Complete {3 - status.test_count} more tests for AI mapping.</Text>
+                    <TouchableOpacity style={styles.whiteBtn} onPress={() => navigation.navigate('DiagnosticTest')}>
                         <Text style={[styles.btnText, { color: '#4F46E5' }]}>
-                            {status.test_count === 0 ? 'Start Assessment' : `Take Test ${status.test_count + 1}`} →
+                            {status.test_count === 0 ? 'Start Assessment' : `Continue Test ${status.test_count + 1}`} →
                         </Text>
                     </TouchableOpacity>
                 </View>
             );
         }
 
-        // --- STEP 3: Roadmap Logic ---
-        if (status.has_roadmap && roadmap) {
+        // --- PHASE 3: GENERATION ---
+        if (!status.has_roadmap) {
             return (
-                <TouchableOpacity
-                    style={[styles.card, { backgroundColor: '#9788FB' }]}
-                    onPress={() => navigation.navigate('Roadmap')}
-                >
-                    <Text style={styles.cardLabel}>PHASE 3: LEARNING</Text>
-                    <Text style={styles.cardTitle}>{roadmap.title || "AI Learning Path"}</Text>
-                    <View style={styles.progressContainer}>
-                        <View style={[styles.progressFill, { width: '20%' }]} />
-                    </View>
-                    <View style={styles.whiteBtn}>
-                        <Text style={[styles.btnText, { color: '#9788FB' }]}>Resume Learning →</Text>
-                    </View>
-                </TouchableOpacity>
+                <View style={[styles.card, { backgroundColor: '#7C3AED' }]}>
+                    <Text style={styles.cardLabel}>FINAL STEP</Text>
+                    <Text style={styles.cardTitle}>Build Your Roadmap</Text>
+                    <Text style={styles.cardSub}>Ready to generate your personalized {status.domain} plan.</Text>
+                    <TouchableOpacity style={styles.whiteBtn} onPress={handleGenerateRoadmap}>
+                        <Text style={[styles.btnText, { color: '#7C3AED' }]}>Generate Now →</Text>
+                    </TouchableOpacity>
+                </View>
             );
         }
 
-        // --- FALLBACK: Generation Ready ---
+        // --- PHASE 4: ACTIVE LEARNING ---
         return (
-            <View style={[styles.card, { backgroundColor: '#7C3AED' }]}>
-                <Text style={styles.cardLabel}>FINAL STEP</Text>
-                <Text style={styles.cardTitle}>Ready to Generate</Text>
-                <Text style={styles.cardSub}>Your 3 tests are done. Let's build your custom syllabus.</Text>
-                <TouchableOpacity
-                    style={styles.whiteBtn}
-                    onPress={async () => {
-                        setLoading(true);
-                        await refreshRoadmap(); // Hits your /api/roadmap/create/
-                        setLoading(false);
-                    }}
-                >
-                    <Text style={[styles.btnText, { color: '#7C3AED' }]}>Build Roadmap Now →</Text>
-                </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+                style={[styles.card, { backgroundColor: '#9788FB' }]}
+                onPress={() => navigation.navigate('Roadmap')}
+                disabled={isDataLoading}
+            >
+                <Text style={styles.cardLabel}>PHASE 4: LEARNING</Text>
+                <Text style={styles.cardTitle}>{roadmap?.title || "My Learning Path"}</Text>
+                <View style={styles.progressContainer}>
+                    <View style={[styles.progressFill, { width: `${status.progress || 5}%` }]} />
+                </View>
+                <View style={styles.whiteBtn}>
+                    {isDataLoading ? (
+                        <ActivityIndicator color="#9788FB" size="small" />
+                    ) : (
+                        <Text style={[styles.btnText, { color: '#9788FB' }]}>Resume Learning →</Text>
+                    )}
+                </View>
+            </TouchableOpacity>
         );
     };
 
@@ -155,20 +211,21 @@ export default function HomeScreen({ navigation }) {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" />
             <ScrollView
+                showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 30 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchProgress(true)} />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => syncAllData(true)} />}
             >
                 <View style={styles.header}>
                     <Text style={styles.welcome}>Hello {userData?.name?.split(' ')[0] || 'Student'}!</Text>
-                    <Text style={styles.subWelcome}>Computer Science • BMIT</Text>
+                    <Text style={styles.subWelcome}>{userData?.department || 'Engineering'} • {userData?.university || 'BMIT Solapur'}</Text>
                 </View>
 
                 {renderMainCard()}
 
-                <Text style={styles.sectionTitle}>Shortcuts</Text>
+                <Text style={styles.sectionTitle}>Quick Actions</Text>
                 <View style={styles.actionGrid}>
                     <ActionCard label="Profile" icon="🎓" onPress={() => navigation.navigate('EditLearningInfo')} />
-                    <ActionCard label="Diagnostic" icon="📋" onPress={() => navigation.navigate('DiagnosticTest')} />
+                    <ActionCard label="Test" icon="📋" onPress={() => navigation.navigate('DiagnosticTest')} />
                     <ActionCard label="AI Chat" icon="🤖" onPress={() => navigation.navigate('Main', { screen: 'AI-Chat' })} />
                 </View>
             </ScrollView>
@@ -178,29 +235,31 @@ export default function HomeScreen({ navigation }) {
 
 const ActionCard = ({ label, icon, onPress }) => (
     <TouchableOpacity style={styles.actionItem} onPress={onPress}>
-        <Text style={{ fontSize: 22 }}>{icon}</Text>
+        <View style={styles.iconCircle}><Text style={{ fontSize: 22 }}>{icon}</Text></View>
         <Text style={styles.actionLabel}>{label}</Text>
     </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FE', paddingHorizontal: 20 },
-    header: { marginTop: 40, marginBottom: 25 },
-    welcome: { fontSize: 24, fontWeight: 'bold', color: '#1E293B' },
-    subWelcome: { color: '#64748B', fontSize: 13, marginTop: 4 },
-    card: { padding: 22, borderRadius: 28, minHeight: 210, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+    container: { flex: 1, backgroundColor: '#F8F9FE' },
+    header: { paddingHorizontal: 20, marginTop: 20, marginBottom: 25 },
+    welcome: { fontSize: 26, fontWeight: 'bold', color: '#1E293B' },
+    subWelcome: { color: '#64748B', fontSize: 14, marginTop: 4 },
+    card: { marginHorizontal: 20, padding: 24, borderRadius: 32, minHeight: 220, marginBottom: 10, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10 },
     center: { justifyContent: 'center', alignItems: 'center' },
+    syncText: { marginTop: 12, color: '#64748B', fontWeight: '500' },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cardLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-    badgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
-    cardTitle: { color: '#FFF', fontSize: 22, fontWeight: 'bold', marginTop: 10 },
-    cardSub: { color: 'rgba(255,255,255,0.85)', fontSize: 14, marginTop: 10, lineHeight: 20 },
-    whiteBtn: { backgroundColor: '#FFF', padding: 15, borderRadius: 16, alignItems: 'center', marginTop: 'auto' },
-    btnText: { fontWeight: 'bold', fontSize: 15 },
-    progressContainer: { height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, marginVertical: 20 },
-    progressFill: { height: 6, backgroundColor: '#FFF', borderRadius: 3 },
-    sectionTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 30, marginBottom: 15, color: '#1E293B' },
-    actionGrid: { flexDirection: 'row', gap: 12 },
-    actionItem: { flex: 1, backgroundColor: '#FFF', padding: 18, borderRadius: 20, alignItems: 'center', elevation: 2 },
-    actionLabel: { fontSize: 12, fontWeight: 'bold', color: '#475569', marginTop: 8 }
+    cardLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
+    badgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    cardTitle: { color: '#FFF', fontSize: 24, fontWeight: 'bold', marginTop: 12 },
+    cardSub: { color: 'rgba(255,255,255,0.85)', fontSize: 15, marginTop: 8, lineHeight: 22 },
+    whiteBtn: { backgroundColor: '#FFF', padding: 16, borderRadius: 18, alignItems: 'center', marginTop: 20 },
+    btnText: { fontWeight: 'bold', fontSize: 16 },
+    progressContainer: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 4, marginVertical: 20 },
+    progressFill: { height: 8, backgroundColor: '#FFF', borderRadius: 4 },
+    sectionTitle: { paddingHorizontal: 20, fontSize: 19, fontWeight: 'bold', marginTop: 30, marginBottom: 15, color: '#1E293B' },
+    actionGrid: { flexDirection: 'row', paddingHorizontal: 20, gap: 12 },
+    actionItem: { flex: 1, backgroundColor: '#FFF', paddingVertical: 20, borderRadius: 24, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
+    iconCircle: { width: 45, height: 45, borderRadius: 22, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+    actionLabel: { fontSize: 13, fontWeight: 'bold', color: '#475569' }
 });

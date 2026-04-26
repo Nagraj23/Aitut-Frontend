@@ -6,11 +6,15 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../context/AuthContext';
+import { UserContext } from '../context/UserContext'; // Added UserContext
 import { AUTH_URL } from '../Constants/Api';
 
 const EditProfileScreen = ({ route, navigation }) => {
     const { type } = route.params;
-    const { signIn, userToken } = useContext(AuthContext);
+
+    // 1. Destructure necessary setters from AuthContext
+    const { signIn, userToken, userData, setIsComplete, setUserData } = useContext(AuthContext);
+    const { refreshRoadmap } = useContext(UserContext);
 
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
@@ -30,10 +34,10 @@ const EditProfileScreen = ({ route, navigation }) => {
 
     const loadCurrentData = async () => {
         try {
-            const details = await AsyncStorage.getItem('userDetails');
-            if (details) {
-                const user = JSON.parse(details);
-                console.log(user,"profile update");
+            // Priority: Use Context data first, fallback to AsyncStorage
+            const user = userData || JSON.parse(await AsyncStorage.getItem('userDetails'));
+
+            if (user) {
                 setCurrentUserId(user.id);
                 setFormData({
                     ...user,
@@ -59,6 +63,8 @@ const EditProfileScreen = ({ route, navigation }) => {
         setLoading(true);
         try {
             const endpoint = type === 'basic' ? 'update-profile/basic' : 'update-profile/learning';
+
+            // Prepare payload
             const payload = type === 'basic' ? {
                 name: formData.name,
                 phoneNo: formData.phoneNo,
@@ -70,7 +76,9 @@ const EditProfileScreen = ({ route, navigation }) => {
                 department: formData.department,
                 targetCourse: targetCourses.join(', '),
                 courseDuration: formData.courseDuration,
-                dailyStudyHours: parseInt(formData.dailyStudyHours) || 0
+                dailyStudyHours: parseInt(formData.dailyStudyHours) || 0,
+                // Logically, if they finish academic setup, profile is complete
+                isComplete: true
             };
 
             const response = await fetch(`${AUTH_URL}/${endpoint}/${currentUserId}`, {
@@ -83,9 +91,20 @@ const EditProfileScreen = ({ route, navigation }) => {
             });
 
             if (response.ok) {
+                // 2. SYNC GLOBAL CONTEXTS
                 const existingDetails = JSON.parse(await AsyncStorage.getItem('userDetails'));
                 const updatedDetails = { ...existingDetails, ...payload };
+
+                // Update AsyncStorage
                 await AsyncStorage.setItem('userDetails', JSON.stringify(updatedDetails));
+
+                // Update AuthContext states immediately
+                setUserData(updatedDetails);
+                if (payload.isComplete) {
+                    setIsComplete(true);
+                }
+
+                // Update internal Auth state if your signIn function handles logic
                 await signIn(updatedDetails);
 
                 ToastAndroid.show("Profile Updated!", ToastAndroid.SHORT);
@@ -95,6 +114,7 @@ const EditProfileScreen = ({ route, navigation }) => {
                 Alert.alert("Update Failed", err);
             }
         } catch (e) {
+            console.error(e);
             Alert.alert("Error", "Server is unreachable. Check your connection.");
         } finally {
             setLoading(false);
@@ -115,7 +135,6 @@ const EditProfileScreen = ({ route, navigation }) => {
             style={{flex: 1}}
         >
             <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                {/* Enhanced Header */}
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                         <Text style={styles.backIcon}>←</Text>
@@ -142,7 +161,7 @@ const EditProfileScreen = ({ route, navigation }) => {
                             <InputField label="COLLEGE NAME" icon="🏫" value={formData.college} onChange={(v) => setFormData({...formData, college: v})} placeholder="e.g. BMIT Solapur" />
                             <InputField label="UNIVERSITY" icon="🏢" value={formData.university} onChange={(v) => setFormData({...formData, university: v})} placeholder="e.g. Solapur University" />
 
-                            <Text style={styles.sectionTitle}>TARGET COURSES</Text>
+                            <Text style={styles.sectionTitle}>TARGET COURSES (e.g. Java, Python)</Text>
                             <View style={styles.tagInputContainer}>
                                 <View style={styles.chipWrapper}>
                                     {targetCourses.map((course, index) => (
@@ -164,7 +183,7 @@ const EditProfileScreen = ({ route, navigation }) => {
                                                 setCourseInput('');
                                             }
                                         }}
-                                        placeholder={targetCourses.length === 0 ? "Add course (e.g. Java)" : "Add more..."}
+                                        placeholder={targetCourses.length === 0 ? "Add course" : "Add more..."}
                                     />
                                 </View>
                             </View>
@@ -215,7 +234,7 @@ const styles = StyleSheet.create({
     header: {
         paddingHorizontal: 25,
         paddingTop: 50,
-        paddingBottom: 30,
+        paddingBottom: 40,
         backgroundColor: '#9788FB',
         borderBottomLeftRadius: 35,
         borderBottomRightRadius: 35
@@ -226,7 +245,7 @@ const styles = StyleSheet.create({
     subtitle: { color: 'rgba(255,255,255,0.85)', fontSize: 14, marginTop: 6, lineHeight: 20 },
 
     formCard: {
-        marginTop: -20,
+        marginTop: -30,
         marginHorizontal: 20,
         backgroundColor: '#FFF',
         borderRadius: 25,

@@ -4,13 +4,16 @@ import {
     TextInput, ScrollView, ActivityIndicator,
     Alert, Animated, StatusBar, SafeAreaView
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { ASSESSMENT_URL } from '../Constants/Api';
-import { UserContext } from '../context/UserContext'; // Ensure context is imported
+import { ASSESSMENT_URL, AUTH_URL } from '../Constants/Api';
+import { UserContext } from '../context/UserContext';
+import { AuthContext } from '../context/AuthContext';
 
 export default function DiagnosticTest({ navigation }) {
-    const { refreshRoadmap } = useContext(UserContext); // To update context globally
+    // 🔥 ALIGNED: Pulling data and the universal update function from AuthContext
+    const { refreshRoadmap } = useContext(UserContext);
+    const { userData, userToken, testCount, updateUser } = useContext(AuthContext);
+
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [testData, setTestData] = useState(null);
@@ -18,113 +21,146 @@ export default function DiagnosticTest({ navigation }) {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState({});
     const [dayNumber, setDayNumber] = useState(1);
-    const [totalDays] = useState(3);
 
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
-    useEffect(() => { generateTest(); }, []);
+    useEffect(() => {
+        if (userData?.id) {
+            generateTest();
+        }
+    }, [userData?.id]);
 
     const generateTest = async () => {
         try {
             setLoading(true);
-            const token = await AsyncStorage.getItem('accessToken');
-            const userDetails = await AsyncStorage.getItem('userDetails');
-            const user = JSON.parse(userDetails);
 
-            // Using domain strictly from profile or selection
-            const domain = user?.targetCourse || 'Computer Science';
+            // ✅ FIX: Ensure domain and user_id are never undefined
+            const domain = userData?.currentLearning || userData?.department || 'Computer Science';
+            const userId = userData?.id;
+
+            if (!userId) {
+                console.error("Missing User ID");
+                return;
+            }
 
             const response = await axios.post(
                 `${ASSESSMENT_URL}/assessment/generate/`,
-                { domain }, // Only sending domain as requested
-                { headers: { Authorization: `Bearer ${token}` } }
+                {
+                    domain: domain,
+                    spring_user_id: userId,
+                    role: 'student' // Added role as some backends require it for logic
+                },
+                { headers: { Authorization: `Bearer ${userToken}` } }
             );
 
             const data = response.data;
 
-            // Check if backend says onboarding is already done
-            if (data.onboarding_finished) {
-                await handleFinalRoadmapTrigger(domain, token);
-                return;
+            // --- Handle Nested Question Structures ---
+            let extractedQuestions = [];
+            if (Array.isArray(data.questions)) {
+                extractedQuestions = data.questions;
+            } else if (data.questions && Array.isArray(data.questions.questions)) {
+                extractedQuestions = data.questions.questions;
             }
 
-            const rawQuestions = data.questions?.questions || data.questions || [];
+            setQuestions(extractedQuestions);
             setTestData(data);
-            setQuestions(rawQuestions);
-            setDayNumber(data.day || 1);
+
+            // Set phase based on testCount from context
+            setDayNumber((testCount || 0) + 1);
+
+            if (data.onboarding_finished || (testCount >= 3)) {
+                await handleFinalRoadmapTrigger(domain);
+            }
         } catch (error) {
-            console.error('Generate test error:', error.message);
-            Alert.alert('Error', 'Could not load assessment.', [{ text: 'Go Back', onPress: () => navigation.goBack() }]);
+            console.error('Generate error:', error.response?.data || error.message);
+            Alert.alert('Assessment Error', 'Failed to load questions.', [{ text: 'Go Back', onPress: () => navigation.goBack() }]);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleFinalRoadmapTrigger = async (domain, token) => {
+    const handleFinalRoadmapTrigger = async (domain) => {
         try {
             setSubmitting(true);
-            // Instant Roadmap Generation Call
-            await axios.post(
-                `${ASSESSMENT_URL}/roadmap/create/`,
-                { domain },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-
-            // Update Global Context
-            await refreshRoadmap?.();
-
-            Alert.alert("Success", "Roadmap generated based on your 3 tests!");
-            navigation.replace('Main');
-        } catch (e) {
-            console.error("Roadmap trigger failed", e);
-            navigation.replace('Main');
-        }
-    };
-
-    const handleSubmit = async () => {
-        try {
-            setSubmitting(true);
-            const token = await AsyncStorage.getItem('accessToken');
-            const userDetails = await AsyncStorage.getItem('userDetails');
-            const user = JSON.parse(userDetails);
-            const domain = user?.targetCourse || 'Computer Science';
-
-            const answersArray = Object.entries(answers).map(([id, answer]) => ({
-                id: parseInt(id),
-                answer: answer
-            }));
-
             const response = await axios.post(
-                `${ASSESSMENT_URL}/assessment/submit/`,
-                { test_id: testData.test_id, answers: answersArray },
-                { headers: { Authorization: `Bearer ${token}` } }
+                `${ASSESSMENT_URL}/roadmap/create/`,
+                { user_id: userData.id, domain: domain, subject: domain, is_complete: true },
+                { headers: { Authorization: `Bearer ${userToken}` } }
             );
 
-            // If this was the 3rd test (onboarding_finished is true)
-            if (response.data.onboarding_finished) {
-                await handleFinalRoadmapTrigger(domain, token);
-            } else {
-                // Otherwise, show result and let them take the next test
-                navigation.replace('TestResult', {
-                    dayNumber,
-                    totalDays,
-                    onboardingFinished: false,
-                    totalQuestions: questions.length,
-                });
-            }
+            if (response.status === 200 || response.status === 201) {
+                // ✅ UPDATE GLOBAL STATE
+                await updateUser({ hasRoadmap: true, testCount: 3 });
+                await refreshRoadmap?.();
 
-        } catch (error) {
-            Alert.alert('Submission Failed', 'Could not save your answers.');
+                Alert.alert("Success 🎉", "All tests done! Your AI Roadmap is ready.");
+                navigation.replace('Main');
+            }
+        } catch (e) {
+            console.error("Roadmap generation failed", e);
+            navigation.replace('Main');
         } finally {
             setSubmitting(false);
         }
     };
 
-    // ... handleSelectOption, handleDescriptiveAnswer, animateTransition, goToNext, goToPrev stay the same ...
+    const handleSubmit = async () => {
+        if (submitting) return;
+        setSubmitting(true);
+        try {
+            const domain = userData?.currentLearning || userData?.targetCourse || 'Computer Science';
+            const answersArray = Object.entries(answers).map(([id, answer]) => ({
+                id: parseInt(id),
+                answer: answer
+            }));
+
+            // 1. Submit to Django Assessment
+            const response = await axios.post(
+                `${ASSESSMENT_URL}/assessment/submit/`,
+                {
+                    test_id: testData.test_id,
+                    spring_user_id: userData.id,
+                    answers: answersArray
+                },
+                { headers: { Authorization: `Bearer ${userToken}` } }
+            );
+
+            const nextCount = (testCount || 0) + 1;
+
+            // 2. Sync Local Global State & Storage via updateUser
+            await updateUser({ testCount: nextCount });
+
+            // 3. Optional: Sync back to Spring Boot DB
+            try {
+                // ✅ FIX: Removed trailing slash if that was causing the 404 in your logs
+                await axios.put(`${AUTH_URL}/update-profile/learning/${userData.id}`,
+                    { testCount: nextCount },
+                    { headers: { Authorization: `Bearer ${userToken}` } }
+                );
+            } catch (authErr) {
+                console.log("Remote Auth Sync Failed (non-critical)");
+            }
+
+            if (response.data.onboarding_finished || nextCount >= 3) {
+                await handleFinalRoadmapTrigger(domain);
+            } else {
+                Alert.alert("Test Submitted", `Phase ${nextCount} complete!`, [
+                    { text: "Continue", onPress: () => navigation.replace('Main') }
+                ]);
+            }
+
+        } catch (error) {
+            console.error("Submit Error:", error.response?.data || error.message);
+            Alert.alert('Error', 'Submission failed. Check your internet.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     const handleSelectOption = (questionId, selectedOption) => {
-        const letter = selectedOption.charAt(0);
-        setAnswers(prev => ({ ...prev, [String(questionId)]: letter }));
+        // Standardize format to just the letter 'A', 'B', etc.
+        setAnswers(prev => ({ ...prev, [String(questionId)]: selectedOption.charAt(0) }));
     };
 
     const handleDescriptiveAnswer = (questionId, text) => {
@@ -132,16 +168,16 @@ export default function DiagnosticTest({ navigation }) {
     };
 
     const animateTransition = (callback) => {
-        Animated.timing(fadeAnim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
+        Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
             callback();
-            Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+            Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
         });
     };
 
     const goToNext = () => {
         const currentQ = questions[currentIndex];
-        if (!answers[String(currentQ.id)]) {
-            Alert.alert('Answer Required', 'Please answer before moving on.');
+        if (!answers[String(currentQ?.id)]) {
+            Alert.alert('Action Required', 'Please provide an answer before moving forward.');
             return;
         }
         if (currentIndex < questions.length - 1) {
@@ -158,135 +194,132 @@ export default function DiagnosticTest({ navigation }) {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <View style={styles.loadingCard}>
-                    <ActivityIndicator size="large" color="#9788FB" />
-                    <Text style={styles.loadingTitle}>Preparing Test {dayNumber}/3</Text>
-                    <Text style={styles.loadingSubText}>Evaluating your {dayNumber === 1 ? 'Fundamentals' : dayNumber === 2 ? 'Core Logic' : 'Advanced Application'}</Text>
-                </View>
+                <ActivityIndicator size="large" color="#6366F1" />
+                <Text style={styles.loadingTitle}>Preparing Phase {(testCount || 0) + 1}/3...</Text>
+                <Text style={styles.loadingSub}>Analyzing your domain: {userData?.currentLearning || 'General'}</Text>
             </View>
         );
     }
 
     const currentQuestion = questions[currentIndex];
-    const isMCQ = currentQuestion?.type === 'mcq';
-    const progress = ((currentIndex + 1) / questions.length) * 100;
+    const isMCQ = currentQuestion?.type?.toLowerCase() === 'mcq';
+    const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
 
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" />
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}><Text style={styles.closeBtnText}>✕</Text></TouchableOpacity>
-                <View style={styles.dayBadge}><Text style={styles.dayBadgeText}>Phase {dayNumber} of 3</Text></View>
-                <Text style={styles.questionCounter}>{currentIndex + 1}/{questions.length}</Text>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
+                    <Text style={styles.closeText}>✕</Text>
+                </TouchableOpacity>
+                <View style={styles.dayBadge}>
+                    <Text style={styles.dayText}>Assessment Phase {(testCount || 0) + 1}</Text>
+                </View>
+                <Text style={styles.counter}>{currentIndex + 1}/{questions.length}</Text>
             </View>
 
-            <View style={styles.progressBarBg}>
-                <Animated.View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+            <View style={styles.barBg}>
+                <Animated.View style={[styles.barFill, { width: `${progress}%` }]} />
             </View>
 
             <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
                 <Animated.View style={{ opacity: fadeAnim }}>
-                    <View style={[styles.typeBadge, { backgroundColor: isMCQ ? '#EEF2FF' : '#FFF7ED' }]}>
-                        <Text style={[styles.typeBadgeText, { color: isMCQ ? '#9788FB' : '#F97316' }]}>{isMCQ ? 'Multiple Choice' : 'Descriptive'}</Text>
+                    <View style={[styles.badge, { backgroundColor: isMCQ ? '#EEF2FF' : '#FFF7ED' }]}>
+                        <Text style={[styles.badgeText, { color: isMCQ ? '#6366F1' : '#F97316' }]}>
+                            {isMCQ ? 'MULTIPLE CHOICE' : 'DESCRIPTIVE'}
+                        </Text>
                     </View>
-                    <Text style={styles.questionText}>{currentQuestion?.question}</Text>
+                    <Text style={styles.qText}>{currentQuestion?.question}</Text>
 
                     {isMCQ ? (
-                        currentQuestion.options?.map((option, idx) => (
+                        currentQuestion.options?.map((opt, idx) => (
                             <TouchableOpacity
                                 key={idx}
-                                style={[styles.optionBtn, answers[String(currentQuestion.id)] === option.charAt(0) && styles.optionBtnSelected]}
-                                onPress={() => handleSelectOption(currentQuestion.id, option)}
+                                style={[
+                                    styles.optBtn,
+                                    answers[String(currentQuestion.id)] === opt.charAt(0) && styles.optSelected
+                                ]}
+                                onPress={() => handleSelectOption(currentQuestion.id, opt)}
                             >
-                                <View style={[styles.optionLetter, answers[String(currentQuestion.id)] === option.charAt(0) && styles.optionLetterSelected]}>
-                                    <Text style={[styles.optionLetterText, answers[String(currentQuestion.id)] === option.charAt(0) && styles.optionLetterTextSelected]}>{option.charAt(0)}</Text>
+                                <View style={[
+                                    styles.optLetter,
+                                    answers[String(currentQuestion.id)] === opt.charAt(0) && styles.optLetterSelected
+                                ]}>
+                                    <Text style={[
+                                        styles.optLetterText,
+                                        answers[String(currentQuestion.id)] === opt.charAt(0) && styles.optLetterTextSelected
+                                    ]}>{opt.charAt(0)}</Text>
                                 </View>
-                                <Text style={styles.optionText}>{option.substring(3)}</Text>
+                                <Text style={styles.optText}>{opt.substring(3)}</Text>
                             </TouchableOpacity>
                         ))
                     ) : (
-                        <View style={styles.descriptiveContainer}>
-                            <TextInput
-                                style={styles.descriptiveInput}
-                                multiline
-                                placeholder="Write your detailed answer..."
-                                value={answers[String(currentQuestion.id)] || ''}
-                                onChangeText={(text) => handleDescriptiveAnswer(currentQuestion.id, text)}
-                            />
-                        </View>
+                        <TextInput
+                            style={styles.input}
+                            multiline
+                            placeholder="Type your explanation here..."
+                            value={answers[String(currentQuestion?.id)] || ''}
+                            onChangeText={(text) => handleDescriptiveAnswer(currentQuestion.id, text)}
+                        />
                     )}
                 </Animated.View>
             </ScrollView>
 
-            <View style={styles.navRow}>
-                {currentIndex > 0 && (
-                    <TouchableOpacity style={styles.prevBtn} onPress={goToPrev}><Text style={styles.prevBtnText}>Back</Text></TouchableOpacity>
+            <View style={styles.nav}>
+                {currentIndex > 0 ? (
+                    <TouchableOpacity style={styles.back} onPress={goToPrev}>
+                        <Text style={styles.backText}>Back</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ flex: 1 }} />
                 )}
                 <TouchableOpacity
-                    style={[styles.nextBtn, !answers[String(currentQuestion?.id)] && styles.nextBtnDisabled]}
+                    style={[styles.next, !answers[String(currentQuestion?.id)] && styles.disabled]}
                     onPress={goToNext}
                     disabled={submitting}
                 >
-                    {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.nextBtnText}>{currentIndex === questions.length - 1 ? 'Finish Test' : 'Next'}</Text>}
+                    {submitting ? (
+                        <ActivityIndicator color="#FFF" />
+                    ) : (
+                        <Text style={styles.nextText}>
+                            {currentIndex === questions.length - 1 ? 'Finish Test' : 'Next'}
+                        </Text>
+                    )}
                 </TouchableOpacity>
             </View>
         </SafeAreaView>
     );
 }
 
-// ... styles remain same ...
-
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },
-
-    // Loading
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FE', padding: 30 },
-    loadingCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 36, alignItems: 'center', width: '100%', elevation: 5 },
-    loadingEmoji: { fontSize: 48 },
-    loadingTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A', marginTop: 8 },
-    loadingSubText: { fontSize: 13, color: '#9788FB', marginTop: 6, textAlign: 'center' },
-    backBtn: { marginTop: 20, backgroundColor: '#9788FB', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 20 },
-    backBtnText: { color: '#FFF', fontWeight: 'bold' },
-
-    // Header
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
-    closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEF2FF', justifyContent: 'center', alignItems: 'center' },
-    closeBtnText: { fontSize: 14, color: '#9788FB', fontWeight: 'bold' },
-    dayBadge: { backgroundColor: '#9788FB', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
-    dayBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
-    questionCounter: { fontSize: 14, color: '#64748B', fontWeight: '600' },
-
-    // Progress
-    progressBarBg: { height: 5, backgroundColor: '#E2E8F0', marginHorizontal: 20, borderRadius: 3, marginBottom: 10 },
-    progressBarFill: { height: 5, backgroundColor: '#9788FB', borderRadius: 3 },
-
-    // Content
-    scrollView: { flex: 1 },
-    scrollContent: { paddingHorizontal: 20, paddingBottom: 20 },
-    typeBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, marginBottom: 16, marginTop: 10 },
-    typeBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
-    questionText: { fontSize: 17, fontWeight: '700', color: '#1A1A1A', lineHeight: 27, marginBottom: 24 },
-
-    // MCQ
-    optionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 2, borderColor: '#E2E8F0', elevation: 1 },
-    optionBtnSelected: { borderColor: '#9788FB', backgroundColor: '#EEF2FF' },
-    optionLetter: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-    optionLetterSelected: { backgroundColor: '#9788FB' },
-    optionLetterText: { fontWeight: 'bold', color: '#64748B', fontSize: 14 },
-    optionLetterTextSelected: { color: '#FFF' },
-    optionText: { flex: 1, fontSize: 14, color: '#334155', lineHeight: 21 },
-    optionTextSelected: { color: '#1A1A1A', fontWeight: '600' },
-
-    // Descriptive
-    descriptiveContainer: { backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#E2E8F0', overflow: 'hidden' },
-    descriptiveInput: { padding: 16, fontSize: 15, color: '#1A1A1A', minHeight: 150, lineHeight: 24 },
-    charCount: { textAlign: 'right', color: '#CBD5E1', fontSize: 11, paddingRight: 12, paddingBottom: 8 },
-
-    // Nav
-    navRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0', backgroundColor: '#F8F9FE' },
-    prevBtn: { flex: 1, backgroundColor: '#FFF', borderRadius: 16, paddingVertical: 16, alignItems: 'center', borderWidth: 2, borderColor: '#E2E8F0' },
-    prevBtnText: { color: '#64748B', fontWeight: '700', fontSize: 15 },
-    nextBtn: { flex: 2, backgroundColor: '#9788FB', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
-    nextBtnDisabled: { backgroundColor: '#C4B5FD' },
-    nextBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' },
+    loadingTitle: { marginTop: 15, fontWeight: '800', color: '#1E293B', fontSize: 18 },
+    loadingSub: { marginTop: 5, color: '#64748B', fontSize: 14 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+    closeBtn: { width: 35, height: 35, borderRadius: 10, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', elevation: 2 },
+    closeText: { color: '#6366F1', fontWeight: 'bold' },
+    dayBadge: { backgroundColor: '#6366F1', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
+    dayText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
+    counter: { color: '#64748B', fontWeight: 'bold' },
+    barBg: { height: 6, backgroundColor: '#E2E8F0', marginHorizontal: 20, borderRadius: 3 },
+    barFill: { height: 6, backgroundColor: '#6366F1', borderRadius: 3 },
+    scrollContent: { padding: 20, paddingBottom: 100 },
+    badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginBottom: 15 },
+    badgeText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+    qText: { fontSize: 18, fontWeight: '700', color: '#1E293B', lineHeight: 26, marginBottom: 25 },
+    optBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1.5, borderColor: '#E2E8F0' },
+    optSelected: { borderColor: '#6366F1', backgroundColor: '#F5F7FF' },
+    optLetter: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    optLetterSelected: { backgroundColor: '#6366F1' },
+    optLetterText: { fontWeight: 'bold', color: '#64748B' },
+    optLetterTextSelected: { color: '#FFF' },
+    optText: { flex: 1, color: '#334155', fontSize: 15, fontWeight: '500' },
+    input: { backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1.5, borderColor: '#E2E8F0', padding: 15, minHeight: 200, textAlignVertical: 'top', fontSize: 16 },
+    nav: { flexDirection: 'row', gap: 12, padding: 20, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+    back: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center' },
+    backText: { color: '#64748B', fontWeight: '800' },
+    next: { flex: 2, padding: 16, borderRadius: 14, backgroundColor: '#6366F1', alignItems: 'center' },
+    nextText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+    disabled: { opacity: 0.5 }
 });

@@ -1,84 +1,95 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const AuthContext = createContext();
+export const    AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    const [isLoading, setIsLoading] = useState(true);
     const [userToken, setUserToken] = useState(null);
-    const [isComplete, setIsComplete] = useState(false);
-    const [role, setRole] = useState(null);
     const [userData, setUserData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        loadStoredData();
-    }, []);
+    // Global UI Flags
+    const [isComplete, setIsComplete] = useState(false);
+    const [testCount, setTestCount] = useState(0);
+    const [hasRoadmap, setHasRoadmap] = useState(false);
+
+    useEffect(() => { loadStoredData(); }, []);
 
     const loadStoredData = async () => {
         try {
             const token = await AsyncStorage.getItem('accessToken');
-            const complete = await AsyncStorage.getItem('isComplete');
-            const userDetails = await AsyncStorage.getItem('userDetails');
-
+            const details = await AsyncStorage.getItem('userDetails');
             if (token) setUserToken(token);
-            if (complete) setIsComplete(complete === 'true');
-
-            if (userDetails) {
-                const parsed = JSON.parse(userDetails);
+            if (details) {
+                const parsed = JSON.parse(details);
                 setUserData(parsed);
-                setRole(parsed?.role);
+                // Sync internal flags from storage (AuthResponse fields)
+                setIsComplete(parsed.isComplete || false);
+                setTestCount(parsed.testCount || 0);
+                setHasRoadmap(parsed.hasRoadmap || false);
             }
-        } catch (e) {
-            console.error("🚨 [AuthContext]: Load Error:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        } catch (e) { console.error("Auth Load Error", e); }
+        finally { setIsLoading(false); }
+    };
+
+    const updateUser = async (newDetails) => {
+        try {
+            const updatedData = { ...userData, ...newDetails };
+            setUserData(updatedData);
+
+            // Sync specific flags for the Home Screen logic from AuthResponse fields
+            if (newDetails.isComplete !== undefined) setIsComplete(newDetails.isComplete);
+            if (newDetails.testCount !== undefined) setTestCount(newDetails.testCount);
+            if (newDetails.hasRoadmap !== undefined) setHasRoadmap(newDetails.hasRoadmap);
+
+            await AsyncStorage.setItem('userDetails', JSON.stringify(updatedData));
+            console.log("✅ Profile Sync Successful");
+        } catch (e) { console.error("Failed to update user storage", e); }
     };
 
     const signIn = async (data) => {
-        try {
-            const token = data.accessToken || data.token;
-            setUserToken(token);
-            setIsComplete(!!data.complete);
-            setUserData(data);
-            setRole(data.role);
+        // Data here matches your Spring Boot AuthResponse DTO
+        const token = data.accessToken;
+        const refreshToken = data.refreshToken;
 
-            await AsyncStorage.setItem("accessToken", token);
-            await AsyncStorage.setItem("isComplete", String(data.complete));
-            await AsyncStorage.setItem("userDetails", JSON.stringify(data));
-        } catch (error) {
-            console.error("🚨 [AuthContext]: SignIn Error:", error);
-        }
+        setUserToken(token);
+
+        // This will now include: id, name, role, university, year, dept, clg, etc.
+        setUserData(data);
+
+        setIsComplete(data.isComplete || false);
+        setTestCount(data.testCount || 0);
+        setHasRoadmap(data.hasRoadmap || false);
+
+        await AsyncStorage.setItem("accessToken", token);
+        if (refreshToken) await AsyncStorage.setItem("refreshToken", refreshToken);
+        await AsyncStorage.setItem("userDetails", JSON.stringify(data));
     };
 
     const signOut = async () => {
         setUserToken(null);
-        setIsComplete(false);
         setUserData(null);
-        setRole(null);
-        await AsyncStorage.multiRemove(['accessToken', 'isComplete', 'userDetails', 'role', 'userRoadmap']);
+        setIsComplete(false);
+        setHasRoadmap(false);
+        setTestCount(0);
+        await AsyncStorage.clear();
     };
-
-    if (isLoading) {
-        return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#4f46e5" />
-            </View>
-        );
-    }
 
     return (
         <AuthContext.Provider value={{
-            isLoading,
             userToken,
+            userData, // Access university, year, dept via userData.university etc.
+            isLoading,
             isComplete,
-            setIsComplete, // ✅ Exported
-            role,
-            userData,
-            setUserData,   // ✅ Exported (Fixes the undefined error)
+            testCount,
+            hasRoadmap,
+            role: userData?.role,
             signIn,
-            signOut
+            signOut,
+            updateUser,
+            setIsComplete,
+            setTestCount,
+            setHasRoadmap
         }}>
             {children}
         </AuthContext.Provider>
