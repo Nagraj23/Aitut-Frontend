@@ -3,11 +3,13 @@
     "name": "aitut",
     "slug": "aitut",
     "version": "1.0.0",
-    "plugins": [],
+    "plugins": [
+      "expo-font",
+      "expo-status-bar"
+    ],
     "android": {
       "package": "com.example.demo",
-      "softwareKeyboardLayoutMode": "pan",
-      "usesCleartextTraffic": true
+      "softwareKeyboardLayoutMode": "pan"
     }
   }
 }

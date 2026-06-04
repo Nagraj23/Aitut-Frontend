@@ -2,12 +2,11 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
     View, Text, StyleSheet, TextInput, TouchableOpacity,
     KeyboardAvoidingView, Platform, StatusBar, Dimensions,
-    FlatList, ActivityIndicator, Clipboard, ToastAndroid, Alert
+    FlatList, ActivityIndicator, Clipboard, ToastAndroid , Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Markdown from 'react-native-markdown-display';
-import * as Speech from 'expo-speech'; // For the Speak button
+import * as Speech from 'expo-speech';
 
 import { AI_URL } from '../Constants/Api';
 import { AuthContext } from '../context/AuthContext';
@@ -15,80 +14,87 @@ import { AuthContext } from '../context/AuthContext';
 const { width } = Dimensions.get('window');
 const makeId = () => `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-/* ---------------- MESSAGE UI ---------------- */
+/* ---------------- CRASH-PROOF TEXT PARSER ---------------- */
+const renderSafeText = (text) => {
+    if (!text || typeof text !== 'string') return <Text></Text>;
+
+    let cleanText = text
+        .replace(/\. /g, '.\n\n')
+        .replace(/- /g, '\n• ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+    const lines = cleanText.split('\n');
+
+    return lines.map((line, lineIdx) => {
+        if (line.startsWith('#')) {
+            const headingText = line.replace(/^#+\s*/, '');
+            return (
+                <Text key={`h-${lineIdx}`} style={styles.mdHeading}>
+                    {headingText}{'\n'}
+                </Text>
+            );
+        }
+
+        const isBullet = line.startsWith('•');
+        const parts = line.split(/\*\*(\s*)/);
+        const textElements = [];
+
+        let isBold = false;
+        parts.forEach((part, partIdx) => {
+            if (part === '') {
+                isBold = !isBold;
+                return;
+            }
+            textElements.push(
+                <Text key={`p-${partIdx}`} style={isBold ? styles.mdBold : styles.mdNormal}>
+                    {part}
+                </Text>
+            );
+            isBold = !isBold;
+        });
+
+        return (
+            <Text key={`line-${lineIdx}`} style={isBullet ? styles.bulletLine : styles.standardLine}>
+                {textElements}{'\n'}
+            </Text>
+        );
+    });
+};
+
+/* ---------------- CHAT MESSAGE ROW COMPONENT ---------------- */
 const MessageBubble = React.memo(({ item }) => {
+    if (!item) return null;
     const isUser = item.role === 'user';
-    const isWarning = item.text.includes("⚠️ **Note:");
+
+    let textContent = "";
+    if (item.text !== undefined && item.text !== null) {
+        textContent = typeof item.text === 'string' ? item.text : String(item.text);
+    }
+
+    const isWarning = textContent.includes("⚠️ **Note:");
     const [isSpeaking, setIsSpeaking] = useState(false);
 
     const copyToClipboard = () => {
-        Clipboard.setString(item.text);
+        if (!textContent) return;
+        Clipboard.setString(textContent);
         if (Platform.OS === 'android') ToastAndroid.show("Copied!", ToastAndroid.SHORT);
     };
 
     const handleSpeech = async () => {
+        if (!textContent) return;
         if (isSpeaking) {
             Speech.stop();
             setIsSpeaking(false);
         } else {
             setIsSpeaking(true);
-            // Clean markdown for cleaner speech
-            const cleanText = item.text.replace(/[*#_]/g, '');
+            const cleanText = textContent.replace(/[*#_]/g, '');
             Speech.speak(cleanText, {
                 onDone: () => setIsSpeaking(false),
                 onError: () => setIsSpeaking(false),
             });
         }
     };
-
-    const cleanAIText = (text) => {
-        if (!text) return "";
-
-        return text
-            // Remove extra spaces between letters (DB MS → DBMS)
-            .replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, '$1$2')
-
-            // Fix broken words like "Rel ational"
-            .replace(/(\w)\s+(\w)/g, (match, a, b) => {
-                // only merge if both are small fragments
-                if (a.length === 1 || b.length === 1) {
-                    return a + b;
-                }
-                return match;
-            })
-
-            // Fix punctuation spacing
-            .replace(/\s+([.,!?])/g, '$1')
-
-            // Fix ( e .g . ) → (e.g.)
-            .replace(/\(\s*/g, '(')
-            .replace(/\s*\)/g, ')')
-            .replace(/\s*\.\s*/g, '.')
-
-            // Normalize spaces
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-    };
-
-    const formatAIResponse = (text) => {
-        if (!text) return "";
-
-        return text
-            // Headings
-            .replace(/\*\*(.*?)\*\*/g, '**$1**')
-
-            // Add spacing after periods
-            .replace(/\. /g, '.\n\n')
-
-            // Fix bullet points
-            .replace(/- /g, '\n• ')
-
-            // Clean multiple newlines
-            .replace(/\n{3,}/g, '\n\n')
-
-            .trim();
-    };
-
 
     return (
         <View style={[styles.msgRow, isUser ? styles.userRow : styles.botRow]}>
@@ -105,15 +111,18 @@ const MessageBubble = React.memo(({ item }) => {
                 isWarning && styles.warningBubble
             ]}>
                 {isUser ? (
-                    <Text style={styles.userText}>{item.text}</Text>
+                    <Text style={styles.userText}>{textContent || ""}</Text>
                 ) : (
-                    <View>
-                        {/* FIX: Explicitly passing the text into Markdown */}
-                        <Markdown style={markdownStyles}>
-                            {formatAIResponse(item.text)}
-                        </Markdown>
+                    <View style={{ width: '100%' }}>
+                        {textContent && textContent !== "✨ Thinking..." ? (
+                            <Text style={styles.botTextContainer}>
+                                {renderSafeText(textContent)}
+                            </Text>
+                        ) : (
+                            <Text style={styles.thinkingText}>✨ Thinking...</Text>
+                        )}
 
-                        {!item.text.includes("Thinking...") && (
+                        {textContent !== "✨ Thinking..." && textContent !== "" && (
                             <View style={styles.bubbleFooter}>
                                 <TouchableOpacity onPress={handleSpeech} style={styles.footerIcon}>
                                     <Ionicons
@@ -139,12 +148,19 @@ const MessageBubble = React.memo(({ item }) => {
     );
 });
 
-/* ---------------- MAIN SCREEN (NO LOGIC CHANGES) ---------------- */
+/* ---------------- MAIN SCREEN COMPONENT ---------------- */
 const TeachScreen = ({ navigation, route }) => {
     const { userData } = useContext(AuthContext);
+
     const step = route.params?.step || {};
-    const subject = route.params?.subject || "Subject";
-    const { day, topic, task } = step;
+    const routeSubject = route.params?.subject;
+
+    const resolvedSubject = routeSubject && typeof routeSubject === 'object' ? (routeSubject.name || routeSubject.title) : routeSubject;
+    const subject = resolvedSubject ? String(resolvedSubject) : "Database Management";
+
+    const day = step?.day ? String(step.day) : "1";
+    const topic = step?.topic ? String(step.topic) : "Introduction";
+    const task = step?.task ? String(step.task) : "";
 
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
@@ -152,83 +168,241 @@ const TeachScreen = ({ navigation, route }) => {
     const [isHistoryLoading, setIsHistoryLoading] = useState(true);
     const [hasStarted, setHasStarted] = useState(false);
 
+    const [isLoadMoreLoading, setIsLoadMoreLoading] = useState(false);
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    // 🎯 FIX 1: Explicit block state variable to lock down layout scroll jump drops
+    const [justLoadedMore, setJustLoadedMore] = useState(false);
+
     const scrollRef = useRef(null);
 
-    // Stop speaking when leaving screen
     useEffect(() => {
         return () => Speech.stop();
     }, []);
 
+    const handleFinishSession = async () => {
+        try {
+            if (!userData?.id) return;
 
+            const response = await fetch(
+                `${AI_URL}/session/wrapup_by_context/${userData.id}/${encodeURIComponent(subject)}/${day}`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                }
+            );
+
+            const data = await response.json();
+
+            console.log("SESSION WRAPUP:", data);
+
+            Alert.alert(
+                "Session Completed 🎉",
+                "Today's learning session has been wrapped up.",
+                [
+                    {
+                        text: "OK",
+                        onPress: () => navigation.goBack()
+                    }
+                ]
+            );
+
+        } catch (error) {
+            console.log("WRAPUP ERROR:", error);
+
+            Alert.alert(
+                "Error",
+                "Failed to complete session."
+            );
+        }
+    };
+    // Initial Chat Session History Fetch
     useEffect(() => {
         const prepareSession = async () => {
-            if (!userData?.id) return;
+            if (!userData || !userData.id) {
+                setIsHistoryLoading(false);
+                return;
+            }
             setIsHistoryLoading(true);
             try {
-                const histUrl = `${AI_URL}/history/${userData.id}/${subject}/${day}`;
+                const safeSubject = subject.trim();
+                const histUrl = `${AI_URL}/history/${userData.id}/${encodeURIComponent(safeSubject)}/${day}?page=1&limit=5`;
+
                 const res = await fetch(histUrl);
                 const data = await res.json();
-                if (data.messages && data.messages.length > 0) {
-                    setMessages(data.messages);
+
+                if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+                    const clearedHistory = data.messages.filter(m => m !== null && m !== undefined);
+                    setMessages(clearedHistory);
                     setHasStarted(true);
+
+                    if (data.messages.length < 5 || data.has_more === false) {
+                        setHasMoreHistory(false);
+                    }
                 } else {
                     const firstMsg = { id: `init_${makeId()}`, role: "user", text: `Hi! Let's start Day ${day}: ${topic}` };
                     setMessages([firstMsg]);
                     setHasStarted(false);
+                    setHasMoreHistory(false);
                 }
-            } catch (err) { console.log(err); } finally { setIsHistoryLoading(false); }
+            } catch (err) {
+                console.log("❌ History Retrieval Exception: ", err);
+            } finally {
+                setIsHistoryLoading(false);
+            }
         };
         prepareSession();
-    }, [day, subject, userData?.id]);
+    }, [day, subject, userData]);
 
+    // Automatically trigger initial AI question if starting clean
     useEffect(() => {
         if (!isHistoryLoading && userData?.id && messages.length === 1 && messages[0]?.id?.startsWith("init_") && !hasStarted) {
             setHasStarted(true);
             handleTeachService(messages[0].text);
         }
-    }, [isHistoryLoading, userData?.id, messages, hasStarted]);
+    }, [isHistoryLoading, userData, messages, hasStarted]);
+
+    // Dynamic Pagination History Fetch
+    const handleLoadMoreHistory = async () => {
+        if (isLoadMoreLoading || !hasMoreHistory || !userData?.id || loading) return;
+
+        setIsLoadMoreLoading(true);
+        // Toggle the layout scroll block flag immediately
+        setJustLoadedMore(true);
+        const nextPage = currentPage + 1;
+
+        try {
+            const safeSubject = subject.trim();
+            const histUrl = `${AI_URL}/history/${userData.id}/${encodeURIComponent(safeSubject)}/${day}?page=${nextPage}&limit=5`;
+            console.log(`📡 Fetching older messages from page: ${nextPage}`);
+
+            const res = await fetch(histUrl);
+            const data = await res.json();
+
+            if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+                const clearedNewHistory = data.messages.filter(m => m !== null && m !== undefined);
+
+                setMessages(prev => {
+                    return [
+                        ...clearedNewHistory.map((msg, index) => ({
+                            ...msg,
+                            id: msg.id || `old_${nextPage}_${index}_${Date.now()}`
+                        })),
+                        ...prev
+                    ];
+                });
+
+                setCurrentPage(nextPage);
+                if (data.messages.length < 5 || data.has_more === false) {
+                    setHasMoreHistory(false);
+                }
+            } else {
+                setHasMoreHistory(false);
+            }
+        } catch (err) {
+            console.log("❌ [LOADMORE ERROR]:", err);
+        } finally {
+            setIsLoadMoreLoading(false);
+            // Release the scroll block with a minor timeout delay to let layout engine compute positions
+            setTimeout(() => setJustLoadedMore(false), 300);
+        }
+    };
 
     const handleTeachService = async (msgText) => {
-        if (!userData?.id || loading) return;
+        if (!userData || !userData.id || loading) return;
         setLoading(true);
+
         const aiMsgId = `ai_${makeId()}`;
         setMessages(prev => [...prev, { id: aiMsgId, role: "assistant", text: "✨ Thinking..." }]);
 
-        const university = (userData.university || "solapur").toLowerCase().replace(/\s+/g, '-');
-        const dept = (userData.department || "cse").toLowerCase().replace(/\s+/g, '-');
-        const url = `${AI_URL}/ask/${university}/${dept}/${userData.year}/${subject.toLowerCase().replace(/\s+/g, '-')}/${day}`;
+        const targetUniv = userData?.university ? String(userData.university) : "solapur";
+        const targetDept = userData?.department ? String(userData.department) : "cse";
+        const targetYear = userData?.year ? String(userData.year) : "1";
+        const targetSub = subject ? String(subject) : "subject";
+
+        const university = targetUniv.toLowerCase().trim().replace(/\s+/g, '-');
+        const dept = targetDept.toLowerCase().trim().replace(/\s+/g, '-');
+        const formattedSub = targetSub.toLowerCase().trim().replace(/\s+/g, '-');
+
+        const url = `${AI_URL}/ask/${university}/${dept}/${targetYear}/${formattedSub}/${day}`;
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", url);
         xhr.setRequestHeader("Content-Type", "application/json");
 
         let lastIndex = 0;
-        let accumulated = "";
+        let accumulatedText = "";
 
         xhr.onreadystatechange = () => {
             if (xhr.readyState === 3 || xhr.readyState === 4) {
-                const newText = xhr.responseText.substring(lastIndex);
+                const chunk = xhr.responseText.substring(lastIndex);
                 lastIndex = xhr.responseText.length;
-                newText.split("\n").forEach(line => {
+
+                const lines = chunk.split("\n");
+                lines.forEach(line => {
                     if (line.startsWith("data:")) {
-                        let token = line.replace("data:", "");
-                        if (token) {
-                            accumulated += token;
-                            setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: accumulated.trim() } : m));
+                        const token = line.replace("data:", "");
+                        if (token !== undefined && token !== null) {
+                            accumulatedText += token;
                         }
+                    } else if (!line.startsWith("data:") && line.trim() !== "" && lines.length === 1) {
+                        accumulatedText += line;
                     }
                 });
+
+                if (accumulatedText.length > 0) {
+                    setMessages(prev => prev.map(m =>
+                        m.id === aiMsgId ? { ...m, text: accumulatedText } : m
+                    ));
+                }
             }
-            if (xhr.readyState === 4) setLoading(false);
+            if (xhr.readyState === 4) {
+                setLoading(false);
+            }
         };
-        xhr.send(JSON.stringify({ user_id: String(userData.id), message: msgText, topic, task }));
+
+        xhr.onerror = (err) => {
+            console.log("❌ XHR Connection Failure:", err);
+            setLoading(false);
+            setMessages(prev => prev.map(m =>
+                m.id === aiMsgId ? { ...m, text: "❌ Connection error. Please verify server status." } : m
+            ));
+        };
+
+        xhr.send(JSON.stringify({
+            user_id: String(userData?.id || ""),
+            message: String(msgText || ""),
+            topic: String(topic || ""),
+            task: String(task || "")
+        }));
     };
 
     const onSend = () => {
         if (!inputText.trim() || loading) return;
-        setMessages(prev => [...prev, { id: makeId(), role: "user", text: inputText }]);
-        handleTeachService(inputText);
+        const userMsg = inputText.trim();
+        setMessages(prev => [...prev, { id: makeId(), role: "user", text: userMsg }]);
+        handleTeachService(userMsg);
         setInputText('');
+    };
+
+    const renderListHeader = () => {
+        if (!hasMoreHistory) return null;
+
+        return (
+            <View style={styles.headerButtonWrapper}>
+                {isLoadMoreLoading ? (
+                    <ActivityIndicator size="small" color="#4F46E5" style={{ paddingVertical: 6 }} />
+                ) : (
+                    <TouchableOpacity style={styles.loadMoreButton} onPress={handleLoadMoreHistory}>
+                        <Ionicons name="time-outline" size={14} color="#4F46E5" style={{ marginRight: 6 }} />
+                        <Text style={styles.loadMoreButtonText}>Load Older Messages</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
     };
 
     if (isHistoryLoading) return (
@@ -246,7 +420,10 @@ const TeachScreen = ({ navigation, route }) => {
                     <Text style={styles.headerTitle} numberOfLines={1}>{topic}</Text>
                     <View style={styles.headerBadge}><Text style={styles.headerSub}>{subject} • DAY {day}</Text></View>
                 </View>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.finishBtn}>
+                <TouchableOpacity
+                    onPress={handleFinishSession}
+                    style={styles.finishBtn}
+                >
                     <Text style={styles.finishText}>Finish</Text>
                 </TouchableOpacity>
             </View>
@@ -255,15 +432,37 @@ const TeachScreen = ({ navigation, route }) => {
                 <FlatList
                     ref={scrollRef}
                     data={messages}
-                    keyExtractor={item => item.id}
+                    keyExtractor={(item, index) => {
+                        const baseId = item?.id || `msg-${index}`;
+                        const roleToken = item?.role || 'bot';
+                        return `${roleToken}_${baseId}_index-${index}`;
+                    }}
                     renderItem={({ item }) => <MessageBubble item={item} />}
                     contentContainerStyle={styles.listContent}
-                    onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+                    ListHeaderComponent={renderListHeader}
+
+                    // 🎯 FIX 2: Conditionally allow layout scroll tracking transitions
+                    onContentSizeChange={() => {
+                        if (!justLoadedMore && !isLoadMoreLoading) {
+                            scrollRef.current?.scrollToEnd({ animated: true });
+                        }
+                    }}
+                    onLayout={() => {
+                        if (!justLoadedMore && !isLoadMoreLoading) {
+                            scrollRef.current?.scrollToEnd({ animated: false });
+                        }
+                    }}
                 />
                 <View style={styles.inputWrapper}>
                     <View style={styles.inputContainer}>
-                        <TextInput style={styles.textInput} placeholder="Ask a doubt..." value={inputText} onChangeText={setInputText} multiline />
-                        <TouchableOpacity onPress={onSend} style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]} disabled={loading}>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="Ask a doubt..."
+                            value={inputText}
+                            onChangeText={setInputText}
+                            multiline
+                        />
+                        <TouchableOpacity onPress={onSend} style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]} disabled={loading || !inputText.trim()}>
                             {loading ? <ActivityIndicator color="#FFF" /> : <Ionicons name="send" size={18} color="#FFF" />}
                         </TouchableOpacity>
                     </View>
@@ -273,98 +472,7 @@ const TeachScreen = ({ navigation, route }) => {
     );
 };
 
-/* --- MARKDOWN STYLING --- */
-const markdownStyles = {
-    body: {
-        fontSize: 15,
-        color: "#1E293B",
-        lineHeight: 24,
-    },
-
-    heading1: {
-        fontSize: 20,
-        fontWeight: "800",
-        color: "#0F172A",
-        marginBottom: 10,
-    },
-
-    heading2: {
-        fontSize: 18,
-        fontWeight: "700",
-        color: "#1E293B",
-        marginBottom: 8,
-    },
-
-    strong: {
-        fontWeight: "800",
-        color: "#4F46E5",
-    },
-
-    em: {
-        fontStyle: "italic",
-        color: "#475569",
-    },
-
-    paragraph: {
-        marginBottom: 12,
-    },
-
-    bullet_list: {
-        marginBottom: 12,
-        paddingLeft: 6,
-    },
-
-    ordered_list: {
-        marginBottom: 12,
-        paddingLeft: 6,
-    },
-
-    list_item: {
-        marginBottom: 8,
-        flexDirection: "row",
-    },
-
-    bullet_list_icon: {
-        color: "#4F46E5",
-        marginRight: 6,
-        fontSize: 10,
-    },
-
-    code_inline: {
-        backgroundColor: "#EEF2FF",
-        color: "#4F46E5",
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 6,
-        fontSize: 13,
-    },
-
-    code_block: {
-        backgroundColor: "#0F172A",
-        color: "#E2E8F0",
-        padding: 12,
-        borderRadius: 12,
-        marginVertical: 10,
-        fontSize: 13,
-    },
-
-    fence: {
-        backgroundColor: "#0F172A",
-        color: "#E2E8F0",
-        padding: 12,
-        borderRadius: 12,
-        marginVertical: 10,
-    },
-
-    blockquote: {
-        borderLeftWidth: 4,
-        borderLeftColor: "#4F46E5",
-        paddingLeft: 10,
-        color: "#475569",
-        marginVertical: 10,
-    },
-};
-
+/* --- NATIVE APP STYLING --- */
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#4F46E5' },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -381,6 +489,7 @@ const styles = StyleSheet.create({
     msgRow: { marginBottom: 20, flexDirection: 'row' },
     userRow: { justifyContent: 'flex-end' },
     botRow: { justifyContent: 'flex-start' },
+    botIconContainer: { marginRight: 8, justifyContent: 'flex-end' },
     botIconShadow: { width: 36, height: 36, borderRadius: 14, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', elevation: 3 },
     bubble: { maxWidth: width * 0.78, padding: 16, borderRadius: 22 },
     userBubble: { backgroundColor: '#4F46E5', borderBottomRightRadius: 4 },
@@ -392,9 +501,21 @@ const styles = StyleSheet.create({
     footerText: { color: '#94A3B8', fontSize: 11, marginLeft: 4, fontWeight: '600' },
     inputWrapper: { padding: 16, backgroundColor: '#FFF' },
     inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 15 },
-    textInput: { flex: 1, fontSize: 15, maxHeight: 100, paddingVertical: 10 },
+    textInput: { flex: 1, fontSize: 15, maxHeight: 100, paddingVertical: 10, color: '#000' },
     sendBtn: { width: 38, height: 38, borderRadius: 15, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-    sendBtnDisabled: { backgroundColor: '#CBD5E1' }
+    sendBtnDisabled: { backgroundColor: '#CBD5E1' },
+
+    botTextContainer: { width: '100%' },
+    thinkingText: { color: '#475569', fontStyle: 'italic', fontSize: 15 },
+    mdNormal: { fontSize: 15, color: '#1E293B', lineHeight: 22 },
+    mdBold: { fontSize: 15, color: '#4F46E5', fontWeight: '800', lineHeight: 22 },
+    mdHeading: { fontSize: 18, color: '#0F172A', fontWeight: '900', marginTop: 6, marginBottom: 4 },
+    standardLine: { marginVertical: 2 },
+    bulletLine: { marginVertical: 2, paddingLeft: 8 },
+
+    headerButtonWrapper: { width: '100%', alignItems: 'center', marginVertical: 12, paddingBottom: 10 },
+    loadMoreButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EEF2FF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#D2D5FF' },
+    loadMoreButtonText: { color: '#4F46E5', fontSize: 13, fontWeight: '700' }
 });
 
 export default TeachScreen;
