@@ -441,41 +441,9 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
 
-    masteredChip: {
-        width: '48%',
-        backgroundColor: '#F0FDF4',
-        borderWidth: 1,
-        borderColor: '#BBF7D0',
-        borderRadius: 14,
-        paddingVertical: 12,
-        paddingHorizontal: 10,
-        marginBottom: 10,
-    },
 
-    revisionChip: {
-        width: '48%',
-        backgroundColor: '#FEF2F2',
-        borderWidth: 1,
-        borderColor: '#FECACA',
-        borderRadius: 14,
-        paddingVertical: 12,
-        paddingHorizontal: 10,
-        marginBottom: 10,
-    },
 
-    masteredText: {
-        textAlign: 'center',
-        color: '#166534',
-        fontSize: 13,
-        fontWeight: '600',
-    },
 
-    revisionText: {
-        textAlign: 'center',
-        color: '#991B1B',
-        fontSize: 13,
-        fontWeight: '600',
-    },
     revisionHeading: {
         fontSize: 15,
         fontWeight: '700',
