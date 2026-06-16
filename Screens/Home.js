@@ -440,10 +440,6 @@ const styles = StyleSheet.create({
         flexWrap: 'wrap',
         justifyContent: 'space-between',
     },
-
-
-
-
     revisionHeading: {
         fontSize: 15,
         fontWeight: '700',

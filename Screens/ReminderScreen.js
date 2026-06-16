@@ -1,28 +1,28 @@
 import React, { useState, useContext } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
 import { UserContext } from '../context/UserContext';
 import { AuthContext } from '../context/AuthContext';
+import { scheduleHardwareStudyAlarm } from './LocalScheduler'; // Confirm this matches your relative directory path
 
 export default function ReminderScreen() {
-    const { userData } = useContext(AuthContext);
+    // 🔐 Extracted userToken from global authentication context to enable FastAPI sync parameters
+    const { userData, userToken } = useContext(AuthContext);
     const { roadmap } = useContext(UserContext);
 
-    // Alarm clock states (Defaulting to 06:00 AM)
-    const [alarmHour, setAlarmHour] = useState('06');
+    // Alarm clock states (Defaulting to 08:00 PM to align with your exact example flow)
+    const [alarmHour, setAlarmHour] = useState('08');
     const [alarmMinute, setAlarmMinute] = useState('00');
-    const [isPm, setIsPm] = useState(false); // false = AM, true = PM
+    const [isPm, setIsPm] = useState(true); // Default true = PM
 
-    // Safely extract distinct subject lines from your global learning context array
     const distinctSubjects = roadmap ? Array.from(new Set(roadmap.map(item => item.subject))) : [];
 
-    // Digital clock helper logic: Increment wheel values
+    // Digital adjustments buttons helper
     const incrementValue = (current, max, setter) => {
         let val = parseInt(current, 10) + 1;
-        if (val > max) val = (max === 12 ? 1 : 0);
+        if (val > max) val = (max === 12 ? 1 : 0); // Hours wrap to 1, minutes to 0
         setter(val.toString().padStart(2, '0'));
     };
 
-    // Digital clock helper logic: Decrement wheel values
     const decrementValue = (current, max, setter) => {
         let val = parseInt(current, 10) - 1;
         if (max === 12 && val < 1) val = 12;
@@ -30,7 +30,7 @@ export default function ReminderScreen() {
         setter(val.toString().padStart(2, '0'));
     };
 
-    const handleSetExactAlarm = (subjectName) => {
+    const handleSetExactAlarm = async (subjectName) => {
         const activeTask = roadmap.find(item => item.subject === subjectName);
         if (!activeTask) {
             Alert.alert("Error", "Could not track active context for this subject row.");
@@ -40,7 +40,7 @@ export default function ReminderScreen() {
         let hours = parseInt(alarmHour, 10);
         const minutes = parseInt(alarmMinute, 10);
 
-        // Convert 12-hour wheel selectors into standard 24-hour timestamp structures
+        // Convert 12-hour clock format to 24-hour timestamp system logic
         if (isPm && hours !== 12) hours += 12;
         if (!isPm && hours === 12) hours = 0;
 
@@ -50,24 +50,37 @@ export default function ReminderScreen() {
         targetTimestamp.setSeconds(0);
         targetTimestamp.setMilliseconds(0);
 
-        // If target timestamp already occurred today, roll it over to tomorrow morning
+        // If the configured time already happened today, shift it automatically to tomorrow!
         if (targetTimestamp.getTime() <= Date.now()) {
             targetTimestamp.setDate(targetTimestamp.getDate() + 1);
         }
 
-        const timeString = `${alarmHour}:${alarmMinute} ${isPm ? 'PM' : 'AM'}`;
-        const dayString = targetTimestamp.getDate() === new Date().getDate() ? 'Today' : 'Tomorrow';
+        try {
+            // 🔥 CRITICAL SYNC ALIGNMENT: We now pass your context metadata AND userToken
+            // into your LocalScheduler dual action channel handler!
+            await scheduleHardwareStudyAlarm(
+                activeTask.subject,
+                activeTask.day_number || 4,
+                activeTask.topic || "React Navigation",
+                targetTimestamp,
+                userToken
+            );
 
-        // Acknowledgment frame confirming mathematical parameters match perfectly
-        Alert.alert(
-            "⏰ Study Alarm Mapped!",
-            `Reminder configuration verified for "${subjectName}". Your study block will trigger ${dayString} at ${timeString}.\n\nTarget Epoch: ${targetTimestamp.getTime()}`
-        );
+            const timeString = `${alarmHour}:${alarmMinute} ${isPm ? 'PM' : 'AM'}`;
+            const dayString = targetTimestamp.getDate() === new Date().getDate() ? 'Today' : 'Tomorrow';
+
+            Alert.alert(
+                "⏰ Alarm Activated!",
+                `Study session for "${activeTask.subject}" successfully configured for ${dayString} at ${timeString}.\n\nWhen it rings, tap [Start] to begin learning "${activeTask.topic || 'React Navigation'}" instantly!`
+            );
+        } catch (error) {
+            Alert.alert("Registry Sync Failure", error.message);
+        }
     };
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            {/* Top Banner Profile Summary Layout */}
+            {/* Header Block */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>⏰ Custom Alarm Center</Text>
                 <Text style={styles.headerSubtitle}>
@@ -75,12 +88,12 @@ export default function ReminderScreen() {
                 </Text>
             </View>
 
-            {/* 📟 Premium Digital Alarm Clock Panel View Widget */}
+            {/* 📟 The Custom Digital Clock Widget Grid */}
             <View style={styles.clockWidgetContainer}>
                 <Text style={styles.clockWidgetTitle}>Set Study Wake-up Time</Text>
 
                 <View style={styles.digitalRow}>
-                    {/* Hours Picker Column Layout */}
+                    {/* Hour Picker Column */}
                     <View style={styles.timeColumn}>
                         <TouchableOpacity onPress={() => incrementValue(alarmHour, 12, setAlarmHour)} style={styles.arrowBtn}>
                             <Text style={styles.arrowText}>▲</Text>
@@ -95,7 +108,7 @@ export default function ReminderScreen() {
 
                     <Text style={styles.digitalColon}>:</Text>
 
-                    {/* Minutes Picker Column Layout */}
+                    {/* Minute Picker Column */}
                     <View style={styles.timeColumn}>
                         <TouchableOpacity onPress={() => incrementValue(alarmMinute, 59, setAlarmMinute)} style={styles.arrowBtn}>
                             <Text style={styles.arrowText}>▲</Text>
@@ -108,7 +121,7 @@ export default function ReminderScreen() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* AM / PM Toggle Selector Segment Buttons */}
+                    {/* AM / PM Selector Column */}
                     <View style={styles.ampmColumn}>
                         <TouchableOpacity
                             style={[styles.ampmButton, !isPm && styles.ampmActive]}
@@ -129,7 +142,6 @@ export default function ReminderScreen() {
 
             <Text style={styles.sectionTitle}>Assign Selected Time to a Subject:</Text>
 
-            {/* Dynamic Roadmap Subject Listing Rows */}
             {distinctSubjects.length === 0 ? (
                 <View style={styles.emptyCard}>
                     <Text style={styles.emptyText}>No subjects loaded inside active roadmap cache.</Text>
@@ -138,7 +150,6 @@ export default function ReminderScreen() {
                 distinctSubjects.map((subject, index) => (
                     <View key={index} style={styles.subjectCard}>
                         <View style={styles.cardInfo}>
-                            {/* FIXES THE BUGS FROM SCREENSHOT: Correct reference to structural styling object */}
                             <Text style={styles.subjectName}>{subject}</Text>
                             <Text style={styles.metaText}>
                                 Will ring at {alarmHour}:{alarmMinute} {isPm ? 'PM' : 'AM'}
@@ -164,15 +175,14 @@ const styles = StyleSheet.create({
     headerTitle: { color: '#FFF', fontSize: 24, fontWeight: '800' },
     headerSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
 
-    // Custom Clock Panel Styles
     clockWidgetContainer: { backgroundColor: '#1E1B4B', marginHorizontal: 20, padding: 20, borderRadius: 24, alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, marginBottom: 25 },
-    clockWidgetTitle: { color: '#93C5FD', fontSize: 11, fontWeight: '700', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 },
+    clockWidgetTitle: { color: '#93C5FD', fontSize: 14, fontWeight: '700', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 },
     digitalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
     timeColumn: { alignItems: 'center', width: 70 },
     arrowBtn: { padding: 6, width: '100%', alignItems: 'center' },
     arrowText: { color: '#6366F1', fontSize: 16, fontWeight: 'bold' },
     numberBox: { backgroundColor: '#312E81', width: 64, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-    digitalNumber: { color: '#FFF', fontSize: 32, fontWeight: '800' },
+    digitalNumber: { color: '#FFF', fontSize: 32, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
     digitalColon: { color: '#FFF', fontSize: 32, fontWeight: '700', marginHorizontal: 10, marginBottom: 4 },
     ampmColumn: { marginLeft: 16, justifyContent: 'space-between', height: 74 },
     ampmButton: { backgroundColor: '#312E81', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, alignItems: 'center' },
@@ -180,7 +190,6 @@ const styles = StyleSheet.create({
     ampmText: { color: '#94A3B8', fontSize: 13, fontWeight: '700' },
     ampmActiveText: { color: '#FFF' },
 
-    // Subject Item Card Layout Styles
     sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', paddingHorizontal: 20, marginBottom: 12 },
     subjectCard: { backgroundColor: '#FFF', marginHorizontal: 20, marginBottom: 12, padding: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 1 },
     cardInfo: { flex: 1 },

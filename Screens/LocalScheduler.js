@@ -1,54 +1,104 @@
-import notifee, { TriggerType, AndroidImportance, AndroidCategory, AndroidVisibility } from '@notifee/react-native';
+import * as Notifications from 'expo-notifications';
+import axios from 'axios';
 
-export const scheduleHardwareStudyAlarm = async (subjectName, targetDay, topicTitle, triggerTime) => {
-    // 1. Prompt explicit system level notification approvals (Mandatory Android 13+)
-    await notifee.requestPermission();
+// Configure how the OS displays alerts when the app is active in the foreground
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+    }),
+});
 
-    // 2. Map the high importance channel to our native sound track asset
-    const channelId = await notifee.createChannel({
-        id: 'aitut_study_alarms',
-        name: 'AItut Critical Study Prompts',
-        importance: AndroidImportance.HIGH,
-        sound: 'wakeup_alarm', // Maps natively to android/app/src/main/res/raw/wakeup_alarm.mp3 [cite: 324]
-        bypassDnd: true,       // Pierces through active system "Do Not Disturb" states [cite: 347]
-    });
-
-    // 3. Configure the Point-In-Time hardware trigger hook
-    const trigger = {
-        type: TriggerType.TIMESTAMP,
-        timestamp: triggerTime.getTime(), // Converts JavaScript date object to epoch milliseconds
-        alarmManager: {
-            allowWhileIdle: true, // Forces execution even when Android drops into a deep Doze power state [cite: 320]
-        },
-    };
-
-    // 4. Register the alert directly into the Android System Kernel [cite: 345, 346]
-    await notifee.createTriggerNotification(
+// Register [Start] & [Snooze] buttons directly into the Android System Shade
+export async function registerAiTutorAlarmCategories() {
+    await Notifications.setNotificationCategoryAsync('study-reminder', [
         {
-            // Create an un-hashed unique ID string using subject and day properties
-            id: `alarm_${subjectName.replace(/\s+/g, '_')}_day_${targetDay}`,
-            title: '🚨 AItut Core Session Awake!',
-            body: `Day ${targetDay}: ${subjectName} -> Reviewing ${topicTitle}`,
-            android: {
-                channelId,
-                category: AndroidCategory.ALARM, // Escalates CPU scheduling priority above social apps [cite: 345, 346]
-                importance: AndroidImportance.HIGH,
-                visibility: AndroidVisibility.PUBLIC, // Reveals contents over the physical lock screen
-                sound: 'wakeup_alarm',
-                ongoing: true,   // Forces the notification card to stay sticky on the view panel
-                autoCancel: false,
-                pressAction: {
-                    id: 'open_quiz_screen',
-                    launchActivity: 'default', // Instantly boots the React Native frontend app context [cite: 315]
-                },
-                // Secure context parameters to allow automatic deep-link routing on launch [cite: 315]
-                data: {
-                    subject: subjectName,
-                    day: targetDay.toString(),
-                    topic: topicTitle
-                }
+            identifier: 'start-session',
+            buttonTitle: 'Start',
+            options: { opensAppToForeground: true },
+        },
+        {
+            identifier: 'snooze-session',
+            buttonTitle: 'Snooze',
+            options: { opensAppToForeground: false },
+        },
+    ]);
+}
+
+/**
+ * Dual Sync Engine: Registers hardware chip timer and posts context payload to FastAPI
+ */
+export async function scheduleHardwareStudyAlarm(subject, dayNumber, topic, targetTimestamp, userToken) {
+    // 1. Confirm notification permissions
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+        throw new Error('Permission for notifications was denied!');
+    }
+
+    // 2. Initialize interactive action button frames
+    await registerAiTutorAlarmCategories();
+
+    // 3. Clear old alarm queues to optimize local device memory
+    await Notifications.cancelAllScheduledNotificationsAsync();
+
+    // 4. Calculate local millisecond delay for hardware trigger execution
+    const triggerTime = new Date(targetTimestamp).getTime();
+    const currentTime = Date.now();
+    const secondsToTrigger = Math.max(1, Math.floor((triggerTime - currentTime) / 1000));
+
+    const generatedAlarmId = Math.floor(Math.random() * 100000);
+
+    // ==========================================
+    // ACTION A: LOCAL HARDWARE REGISTRY (FAIL-SAFE)
+    // ==========================================
+    const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+            title: '🔊 Alarm rings',
+            body: `Study ${subject} Now!`,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            categoryIdentifier: 'study-reminder',
+            data: {
+                alarmId: generatedAlarmId,
+                task: `Study ${subject}`,
+                screen: 'Teach',
+                subjectName: subject,
+                topicName: topic,      // e.g., "React Navigation"
+                dayNumber: Number(dayNumber),
             },
         },
-        trigger
-    );
-};
+        trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: secondsToTrigger,
+        },
+    });
+
+    console.log(`📡 Local Chip Engine armed for ${secondsToTrigger}s. ID: ${notificationId}`);
+
+    // ==========================================
+    // ACTION B: FASTAPI CLOUD SYNC (ALIGNED WITH BACKEND)
+    // ==========================================
+    if (userToken) {
+        try {
+            // Your FastAPI application route details mapped from your architecture review
+            const FASTAPI_REMINDER_URL = 'http://127.0.0.1:8000/alarms/';
+
+            const cloudPayload = {
+                title: `Study ${subject} - Day ${dayNumber}: ${topic}`,
+                trigger_time: new Date(targetTimestamp).toISOString() // Standard ISO format for PostgreSQL
+            };
+
+            const response = await axios.post(FASTAPI_REMINDER_URL, cloudPayload, {
+                headers: {
+                    'Authorization': `Bearer ${userToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log(`☁️ Cloud Sync Active! PostgreSQL entry written successfully. Backend ID: ${response.data.id}`);
+        } catch (cloudError) {
+            // Log the error but don't crash the app — local hardware alarm is already running as fail-safe!
+            console.warn("⚠️ FastAPI Cloud Sync skipped/offline:", cloudError.message);
+        }
+    }
+}

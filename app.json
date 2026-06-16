@@ -5,11 +5,28 @@
     "version": "1.0.0",
     "plugins": [
       "expo-font",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/chat.png",
+          "color": "#4F46E5"
+        }
+      ]
     ],
     "android": {
       "package": "com.example.demo",
-      "softwareKeyboardLayoutMode": "pan"
-    }
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "20cde223-9e7b-4317-ab23-05fddcabdcd8"
+      }
+    },
+    "owner": "nagraj23"
   }
 }
