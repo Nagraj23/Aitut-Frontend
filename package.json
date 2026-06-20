@@ -33,7 +33,6 @@
     "expo-speech": "~56.0.3",
     "expo-status-bar": "~56.0.4",
     "expo-updates": "~56.0.17",
-    "firebase": "^11.9.1",
     "jwt-decode": "^4.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
