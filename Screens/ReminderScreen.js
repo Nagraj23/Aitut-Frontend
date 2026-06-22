@@ -2,24 +2,43 @@ import React, { useState, useContext } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
 import { UserContext } from '../context/UserContext';
 import { AuthContext } from '../context/AuthContext';
-import { scheduleHardwareStudyAlarm } from './LocalScheduler'; // Confirm this matches your relative directory path
+import { scheduleHardwareStudyAlarm } from './LocalScheduler';
 
 export default function ReminderScreen() {
-    // 🔐 Extracted userToken from global authentication context to enable FastAPI sync parameters
     const { userData, userToken } = useContext(AuthContext);
     const { roadmap } = useContext(UserContext);
 
-    // Alarm clock states (Defaulting to 08:00 PM to align with your exact example flow)
+    // Alarm clock states
     const [alarmHour, setAlarmHour] = useState('08');
     const [alarmMinute, setAlarmMinute] = useState('00');
-    const [isPm, setIsPm] = useState(true); // Default true = PM
+    const [isPm, setIsPm] = useState(true);
 
-    const distinctSubjects = roadmap ? Array.from(new Set(roadmap.map(item => item.subject))) : [];
+    // Robust subject parser handling both Array, Object with nested structures, or Object fields
+    const getDistinctSubjects = () => {
+        if (!roadmap) return userData?.targetCourse ? [userData.targetCourse] : [];
 
-    // Digital adjustments buttons helper
+        // If roadmap context itself is an array
+        if (Array.isArray(roadmap)) {
+            return Array.from(new Set(roadmap.map(item => item.subject).filter(Boolean)));
+        }
+
+        // If nested inside an object property (e.g., roadmap.data or roadmap.modules)
+        const targetList = roadmap.data || roadmap.modules || roadmap.items || [];
+        if (Array.isArray(targetList) && targetList.length > 0) {
+            return Array.from(new Set(targetList.map(item => item.subject).filter(Boolean)));
+        }
+
+        // Fallback to primary titles stored on Django/Spring response
+        const fallbackSubject = roadmap.title || roadmap.subject || userData?.targetCourse;
+        return fallbackSubject ? [fallbackSubject] : [];
+    };
+
+    const distinctSubjects = getDistinctSubjects();
+
+    // Clock Increment / Decrement Handlers
     const incrementValue = (current, max, setter) => {
         let val = parseInt(current, 10) + 1;
-        if (val > max) val = (max === 12 ? 1 : 0); // Hours wrap to 1, minutes to 0
+        if (val > max) val = (max === 12 ? 1 : 0);
         setter(val.toString().padStart(2, '0'));
     };
 
@@ -31,16 +50,23 @@ export default function ReminderScreen() {
     };
 
     const handleSetExactAlarm = async (subjectName) => {
-        const activeTask = roadmap.find(item => item.subject === subjectName);
-        if (!activeTask) {
-            Alert.alert("Error", "Could not track active context for this subject row.");
-            return;
+        // Safe entity extraction matching parsed source
+        let activeTask = null;
+        if (Array.isArray(roadmap)) {
+            activeTask = roadmap.find(item => item.subject === subjectName);
+        } else if (roadmap && Array.isArray(roadmap.data || roadmap.modules)) {
+            const list = roadmap.data || roadmap.modules;
+            activeTask = list.find(item => item.subject === subjectName);
         }
+
+        // Context fallback container construct
+        const trackingSubject = activeTask?.subject || subjectName;
+        const trackingDay = activeTask?.day_number || activeTask?.day || 1;
+        const trackingTopic = activeTask?.topic || "Introduction Lecture";
 
         let hours = parseInt(alarmHour, 10);
         const minutes = parseInt(alarmMinute, 10);
 
-        // Convert 12-hour clock format to 24-hour timestamp system logic
         if (isPm && hours !== 12) hours += 12;
         if (!isPm && hours === 12) hours = 0;
 
@@ -50,18 +76,15 @@ export default function ReminderScreen() {
         targetTimestamp.setSeconds(0);
         targetTimestamp.setMilliseconds(0);
 
-        // If the configured time already happened today, shift it automatically to tomorrow!
         if (targetTimestamp.getTime() <= Date.now()) {
             targetTimestamp.setDate(targetTimestamp.getDate() + 1);
         }
 
         try {
-            // 🔥 CRITICAL SYNC ALIGNMENT: We now pass your context metadata AND userToken
-            // into your LocalScheduler dual action channel handler!
             await scheduleHardwareStudyAlarm(
-                activeTask.subject,
-                activeTask.day_number || 4,
-                activeTask.topic || "React Navigation",
+                trackingSubject,
+                trackingDay,
+                trackingTopic,
                 targetTimestamp,
                 userToken
             );
@@ -71,7 +94,7 @@ export default function ReminderScreen() {
 
             Alert.alert(
                 "⏰ Alarm Activated!",
-                `Study session for "${activeTask.subject}" successfully configured for ${dayString} at ${timeString}.\n\nWhen it rings, tap [Start] to begin learning "${activeTask.topic || 'React Navigation'}" instantly!`
+                `Study session for "${trackingSubject}" successfully configured for ${dayString} at ${timeString}.\n\nWhen it rings, tap [Start] to begin learning "${trackingTopic}" instantly!`
             );
         } catch (error) {
             Alert.alert("Registry Sync Failure", error.message);
@@ -84,7 +107,7 @@ export default function ReminderScreen() {
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>⏰ Custom Alarm Center</Text>
                 <Text style={styles.headerSubtitle}>
-                    Student Profile: {userData?.name || "Nagraj Nandal"} ({userData?.dept || "CSE"})
+                    Student Profile: {userData?.name || "User"} ({userData?.department || userData?.dept || "CSE"})
                 </Text>
             </View>
 
@@ -144,7 +167,7 @@ export default function ReminderScreen() {
 
             {distinctSubjects.length === 0 ? (
                 <View style={styles.emptyCard}>
-                    <Text style={styles.emptyText}>No subjects loaded inside active roadmap cache.</Text>
+                    <Text style={styles.emptyText}>No subjects loaded inside active roadmap context.</Text>
                 </View>
             ) : (
                 distinctSubjects.map((subject, index) => (
@@ -174,7 +197,6 @@ const styles = StyleSheet.create({
     header: { backgroundColor: '#4F46E5', padding: 24, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginBottom: 20 },
     headerTitle: { color: '#FFF', fontSize: 24, fontWeight: '800' },
     headerSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
-
     clockWidgetContainer: { backgroundColor: '#1E1B4B', marginHorizontal: 20, padding: 20, borderRadius: 24, alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, marginBottom: 25 },
     clockWidgetTitle: { color: '#93C5FD', fontSize: 14, fontWeight: '700', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 },
     digitalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
@@ -189,7 +211,6 @@ const styles = StyleSheet.create({
     ampmActive: { backgroundColor: '#4F46E5' },
     ampmText: { color: '#94A3B8', fontSize: 13, fontWeight: '700' },
     ampmActiveText: { color: '#FFF' },
-
     sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', paddingHorizontal: 20, marginBottom: 12 },
     subjectCard: { backgroundColor: '#FFF', marginHorizontal: 20, marginBottom: 12, padding: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 1 },
     cardInfo: { flex: 1 },

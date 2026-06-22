@@ -1,193 +1,311 @@
-import React, { useState, useContext } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { UserContext } from '../context/UserContext';
+import React, { useState, useCallback } from 'react';
+import {
+    View, Text, StyleSheet, ScrollView,
+    TouchableOpacity, ActivityIndicator, Alert
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../context/AuthContext';
+import { UserContext } from '../context/UserContext'; // Added
+import { useContext } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import axios from 'axios';
+import { AUTH_URL } from '../Constants/Api';
 
-export default function ReminderScreen() {
-    const { userData } = useContext(AuthContext);
-    const { roadmap } = useContext(UserContext);
+const checkProfileCompletion = (user) => {
+    const phone = user?.phoneNo || user?.phone_no;
+    const basicDone = !!(user?.name && phone && user?.gender);
+    const academicDone = !!(
+        user?.university &&
+        (user?.targetCourse || user?.target_course)
+    );
+    return { basicDone, academicDone, allDone: basicDone && academicDone };
+};
 
-    // Alarm clock states (Defaulting to 06:00 AM)
-    const [alarmHour, setAlarmHour] = useState('06');
-    const [alarmMinute, setAlarmMinute] = useState('00');
-    const [isPm, setIsPm] = useState(false); // false = AM, true = PM
+const ProfileScreen = ({ navigation }) => {
+    const { signOut, userData, userToken, testCount, updateUser } = useContext(AuthContext);
+    const { roadmap } = useContext(UserContext); // Added user context for active roadmap metadata
 
-    // Safely extract distinct subject lines from your global learning context array
-    const distinctSubjects = roadmap ? Array.from(new Set(roadmap.map(item => item.subject))) : [];
+    const completion = checkProfileCompletion(userData);
+    const testsCompleted = testCount || 0;
 
-    // Digital clock helper logic: Increment wheel values
-    const incrementValue = (current, max, setter) => {
-        let val = parseInt(current, 10) + 1;
-        if (val > max) val = (max === 12 ? 1 : 0);
-        setter(val.toString().padStart(2, '0'));
-    };
+    useFocusEffect(
+        useCallback(() => {
+            fetchFreshUserData();
+        }, [userData?.id, userToken])
+    );
 
-    // Digital clock helper logic: Decrement wheel values
-    const decrementValue = (current, max, setter) => {
-        let val = parseInt(current, 10) - 1;
-        if (max === 12 && val < 1) val = 12;
-        else if (max === 59 && val < 0) val = 59;
-        setter(val.toString().padStart(2, '0'));
-    };
+    const fetchFreshUserData = async () => {
+        if (!userData?.id || !userToken) return;
+        try {
+            const response = await axios.get(
+                `${AUTH_URL}/user/${userData.id}`,
+                { headers: { Authorization: `Bearer ${userToken}` } }
+            );
 
-    const handleSetExactAlarm = (subjectName) => {
-        const activeTask = roadmap.find(item => item.subject === subjectName);
-        if (!activeTask) {
-            Alert.alert("Error", "Could not track active context for this subject row.");
-            return;
+            if (response.data) {
+                await updateUser(response.data);
+            }
+        } catch (e) {
+            console.log('Profile background sync error:', e.message);
         }
-
-        let hours = parseInt(alarmHour, 10);
-        const minutes = parseInt(alarmMinute, 10);
-
-        // Convert 12-hour wheel selectors into standard 24-hour timestamp structures
-        if (isPm && hours !== 12) hours += 12;
-        if (!isPm && hours === 12) hours = 0;
-
-        const targetTimestamp = new Date();
-        targetTimestamp.setHours(hours);
-        targetTimestamp.setMinutes(minutes);
-        targetTimestamp.setSeconds(0);
-        targetTimestamp.setMilliseconds(0);
-
-        // If target timestamp already occurred today, roll it over to tomorrow morning
-        if (targetTimestamp.getTime() <= Date.now()) {
-            targetTimestamp.setDate(targetTimestamp.getDate() + 1);
-        }
-
-        const timeString = `${alarmHour}:${alarmMinute} ${isPm ? 'PM' : 'AM'}`;
-        const dayString = targetTimestamp.getDate() === new Date().getDate() ? 'Today' : 'Tomorrow';
-
-        // Acknowledgment frame confirming mathematical parameters match perfectly
-        Alert.alert(
-            "⏰ Study Alarm Mapped!",
-            `Reminder configuration verified for "${subjectName}". Your study block will trigger ${dayString} at ${timeString}.\n\nTarget Epoch: ${targetTimestamp.getTime()}`
-        );
     };
+
+    const handleSignOut = () => {
+        Alert.alert('Sign Out', 'Are you sure you want to logout?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Logout', style: 'destructive', onPress: signOut }
+        ]);
+    };
+
+    const getInitials = (name) => {
+        if (!name) return 'U';
+        const parts = name.trim().split(' ');
+        return parts.length >= 2
+            ? (parts[0][0] + parts[1][0]).toUpperCase()
+            : parts[0][0].toUpperCase();
+    };
+
+    const getRoleColor = (role) => {
+        const colors = { STUDENT: '#9788FB', TEACHER: '#3B82F6', INDIVIDUAL: '#10B981', TPO: '#F97316' };
+        return colors[role] || '#9788FB';
+    };
+
+    const roleColor = getRoleColor(userData?.role);
+    const profileProgress = (completion.basicDone ? 30 : 0) + (completion.academicDone ? 70 : 0);
+    const allTestsDone = testsCompleted >= 3;
+
+    // Get current tracking learning scope safe attributes
+    const activeSubject = roadmap?.title || roadmap?.subject || userData?.targetCourse || 'My Studies';
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            {/* Top Banner Profile Summary Layout */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>⏰ Custom Alarm Center</Text>
-                <Text style={styles.headerSubtitle}>
-                    Student Profile: {userData?.name || "Nagraj Nandal"} ({userData?.dept || "CSE"})
-                </Text>
-            </View>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
 
-            {/* 📟 Premium Digital Alarm Clock Panel View Widget */}
-            <View style={styles.clockWidgetContainer}>
-                <Text style={styles.clockWidgetTitle}>Set Study Wake-up Time</Text>
-
-                <View style={styles.digitalRow}>
-                    {/* Hours Picker Column Layout */}
-                    <View style={styles.timeColumn}>
-                        <TouchableOpacity onPress={() => incrementValue(alarmHour, 12, setAlarmHour)} style={styles.arrowBtn}>
-                            <Text style={styles.arrowText}>▲</Text>
-                        </TouchableOpacity>
-                        <View style={styles.numberBox}>
-                            <Text style={styles.digitalNumber}>{alarmHour}</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => decrementValue(alarmHour, 12, setAlarmHour)} style={styles.arrowBtn}>
-                            <Text style={styles.arrowText}>▼</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    <Text style={styles.digitalColon}>:</Text>
-
-                    {/* Minutes Picker Column Layout */}
-                    <View style={styles.timeColumn}>
-                        <TouchableOpacity onPress={() => incrementValue(alarmMinute, 59, setAlarmMinute)} style={styles.arrowBtn}>
-                            <Text style={styles.arrowText}>▲</Text>
-                        </TouchableOpacity>
-                        <View style={styles.numberBox}>
-                            <Text style={styles.digitalNumber}>{alarmMinute}</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => decrementValue(alarmMinute, 59, setAlarmMinute)} style={styles.arrowBtn}>
-                            <Text style={styles.arrowText}>▼</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* AM / PM Toggle Selector Segment Buttons */}
-                    <View style={styles.ampmColumn}>
-                        <TouchableOpacity
-                            style={[styles.ampmButton, !isPm && styles.ampmActive]}
-                            onPress={() => setIsPm(false)}
-                        >
-                            <Text style={[styles.ampmText, !isPm && styles.ampmActiveText]}>AM</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.ampmButton, isPm && styles.ampmActive]}
-                            onPress={() => setIsPm(true)}
-                        >
-                            <Text style={[styles.ampmText, isPm && styles.ampmActiveText]}>PM</Text>
-                        </TouchableOpacity>
+            {/* ── Hero ── */}
+            <View style={[styles.heroSection, { backgroundColor: roleColor }]}>
+                <View style={styles.avatarRing}>
+                    <View style={[styles.avatar, { borderColor: roleColor }]}>
+                        <Text style={[styles.avatarText, { color: roleColor }]}>
+                            {getInitials(userData?.name)}
+                        </Text>
                     </View>
                 </View>
+
+                <Text style={styles.userName}>{userData?.name || 'Your Name'}</Text>
+                <Text style={styles.userEmail}>{userData?.email || ''}</Text>
+
+                <View style={styles.roleBadge}>
+                    <Text style={[styles.roleBadgeText, { color: roleColor }]}>
+                        {userData?.role || 'STUDENT'}
+                    </Text>
+                </View>
+
+                <View style={[
+                    styles.completionBadge,
+                    { backgroundColor: completion.allDone ? 'rgba(74,222,128,0.2)' : 'rgba(255,200,0,0.2)' }
+                ]}>
+                    <Text style={styles.completionBadgeText}>
+                        {completion.allDone ? '✅ Profile Complete' : '⚠️ Profile Incomplete'}
+                    </Text>
+                </View>
+
+                {!completion.allDone && (
+                    <View style={styles.completionBarContainer}>
+                        <View style={styles.completionBarBg}>
+                            <View style={[styles.completionBarFill, { width: `${profileProgress}%` }]} />
+                        </View>
+                        <Text style={styles.completionPercent}>{profileProgress}% complete</Text>
+                    </View>
+                )}
             </View>
 
-            <Text style={styles.sectionTitle}>Assign Selected Time to a Subject:</Text>
-
-            {/* Dynamic Roadmap Subject Listing Rows */}
-            {distinctSubjects.length === 0 ? (
-                <View style={styles.emptyCard}>
-                    <Text style={styles.emptyText}>No subjects loaded inside active roadmap cache.</Text>
-                </View>
-            ) : (
-                distinctSubjects.map((subject, index) => (
-                    <View key={index} style={styles.subjectCard}>
-                        <View style={styles.cardInfo}>
-                            {/* FIXES THE BUGS FROM SCREENSHOT: Correct reference to structural styling object */}
-                            <Text style={styles.subjectName}>{subject}</Text>
-                            <Text style={styles.metaText}>
-                                Will ring at {alarmHour}:{alarmMinute} {isPm ? 'PM' : 'AM'}
-                            </Text>
+            {/* ── Info Strip ── */}
+            {(userData?.university || userData?.department) && (
+                <View style={styles.infoStrip}>
+                    {userData?.university && (
+                        <View style={styles.infoChip}>
+                            <Text style={styles.infoChipIcon}>🏛️</Text>
+                            <Text style={styles.infoChipText} numberOfLines={1}>{userData.university}</Text>
                         </View>
-                        <TouchableOpacity
-                            style={styles.actionButton}
-                            onPress={() => handleSetExactAlarm(subject)}
-                        >
-                            <Text style={styles.actionButtonText}>Set Alarm</Text>
-                        </TouchableOpacity>
-                    </View>
-                ))
+                    )}
+                    {userData?.department && (
+                        <View style={styles.infoChip}>
+                            <Text style={styles.infoChipIcon}>📚</Text>
+                            <Text style={styles.infoChipText} numberOfLines={1}>{userData.department}</Text>
+                        </View>
+                    )}
+                </View>
             )}
+
+            {/* ── Sections ── */}
+            <View style={styles.sectionsContainer}>
+                <Text style={styles.sectionGroupLabel}>PROFILE SETTINGS</Text>
+
+                <ProfileMenuItem
+                    icon="👤"
+                    title="Basic Info"
+                    subtitle={completion.basicDone ? 'Name, phone & gender added' : 'Add your personal details'}
+                    status={completion.basicDone ? 'done' : 'pending'}
+                    onPress={() => navigation.navigate('EditBasicInfo')}
+                />
+
+                <ProfileMenuItem
+                    icon="🎓"
+                    title="Academic Info"
+                    subtitle={completion.academicDone
+                        ? `${userData?.targetCourse || 'Course'} · ${userData?.university || ''}`
+                        : 'Add university & course details'}
+                    status={completion.academicDone ? 'done' : 'pending'}
+                    onPress={() => navigation.navigate('EditLearningInfo')}
+                />
+
+                <Text style={[styles.sectionGroupLabel, { marginTop: 24 }]}>LEARNING</Text>
+
+                <ProfileMenuItem
+                    icon="🗺️"
+                    title="My Roadmap"
+                    subtitle={allTestsDone
+                        ? 'View your AI learning path'
+                        : `Complete ${3 - testsCompleted} more test${3 - testsCompleted !== 1 ? 's' : ''} to unlock`}
+                    status={allTestsDone ? 'done' : 'pending'}
+                    onPress={() => navigation.navigate('Roadmap')}
+                />
+
+                <ProfileMenuItem
+                    icon="📋"
+                    title="My Tests"
+                    subtitle={`${testsCompleted}/3 assessment tests completed`}
+                    status={allTestsDone ? 'done' : 'neutral'}
+                    onPress={() => navigation.navigate('TestScreen')}
+                />
+
+                {/* ── New Reminder Navigation Integration Button ── */}
+                <ProfileMenuItem
+                    icon="⏰"
+                    title="Study Reminders"
+                    subtitle={`Set daily alarms for ${activeSubject}`}
+                    status={allTestsDone ? 'neutral' : 'neutral'}
+                    onPress={() => navigation.navigate('Reminder', {
+                        subjectName: activeSubject,
+                        roadmapId: roadmap?.id || null
+                    })}
+                />
+
+                <Text style={[styles.sectionGroupLabel, { marginTop: 24 }]}>ACCOUNT</Text>
+
+                <TouchableOpacity style={styles.logoutItem} onPress={handleSignOut} activeOpacity={0.7}>
+                    <View style={styles.logoutIconBox}>
+                        <Text style={styles.menuIcon}>🚪</Text>
+                    </View>
+                    <Text style={styles.logoutText}>Sign Out</Text>
+                    <Text style={styles.menuArrow}>→</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={{ height: 50 }} />
         </ScrollView>
     );
-}
+};
+
+const ProfileMenuItem = ({ icon, title, subtitle, status, onPress }) => {
+    const statusColors = { done: '#4ADE80', pending: '#FBBF24', neutral: '#9788FB' };
+    const statusIcons  = { done: '✓', pending: '!', neutral: '→' };
+
+    return (
+        <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+            <View style={styles.menuIconBox}>
+                <Text style={styles.menuIcon}>{icon}</Text>
+            </View>
+            <View style={styles.menuTextGroup}>
+                <Text style={styles.menuTitle}>{title}</Text>
+                <Text style={styles.menuSubtitle} numberOfLines={1}>{subtitle}</Text>
+            </View>
+            <View style={[styles.menuStatusDot, { backgroundColor: statusColors[status] }]}>
+                <Text style={styles.menuStatusIcon}>{statusIcons[status]}</Text>
+            </View>
+        </TouchableOpacity>
+    );
+};
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },
-    contentContainer: { paddingBottom: 30 },
-    header: { backgroundColor: '#4F46E5', padding: 24, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginBottom: 20 },
-    headerTitle: { color: '#FFF', fontSize: 24, fontWeight: '800' },
-    headerSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
-
-    // Custom Clock Panel Styles
-    clockWidgetContainer: { backgroundColor: '#1E1B4B', marginHorizontal: 20, padding: 20, borderRadius: 24, alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, marginBottom: 25 },
-    clockWidgetTitle: { color: '#93C5FD', fontSize: 11, fontWeight: '700', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 },
-    digitalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-    timeColumn: { alignItems: 'center', width: 70 },
-    arrowBtn: { padding: 6, width: '100%', alignItems: 'center' },
-    arrowText: { color: '#6366F1', fontSize: 16, fontWeight: 'bold' },
-    numberBox: { backgroundColor: '#312E81', width: 64, height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-    digitalNumber: { color: '#FFF', fontSize: 32, fontWeight: '800' },
-    digitalColon: { color: '#FFF', fontSize: 32, fontWeight: '700', marginHorizontal: 10, marginBottom: 4 },
-    ampmColumn: { marginLeft: 16, justifyContent: 'space-between', height: 74 },
-    ampmButton: { backgroundColor: '#312E81', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, alignItems: 'center' },
-    ampmActive: { backgroundColor: '#4F46E5' },
-    ampmText: { color: '#94A3B8', fontSize: 13, fontWeight: '700' },
-    ampmActiveText: { color: '#FFF' },
-
-    // Subject Item Card Layout Styles
-    sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', paddingHorizontal: 20, marginBottom: 12 },
-    subjectCard: { backgroundColor: '#FFF', marginHorizontal: 20, marginBottom: 12, padding: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 1 },
-    cardInfo: { flex: 1 },
-    subjectName: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
-    metaText: { fontSize: 12, color: '#4F46E5', fontWeight: '600', marginTop: 4 },
-    actionButton: { backgroundColor: '#4F46E5', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 12 },
-    actionButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
-    emptyCard: { backgroundColor: '#FFF', margin: 20, padding: 24, borderRadius: 16, alignItems: 'center' },
-    emptyText: { color: '#64748B', textAlign: 'center' }
+    heroSection: {
+        paddingTop: 60, paddingBottom: 32,
+        alignItems: 'center', paddingHorizontal: 20,
+        borderBottomLeftRadius: 36, borderBottomRightRadius: 36,
+    },
+    avatarRing: {
+        width: 104, height: 104, borderRadius: 52,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        justifyContent: 'center', alignItems: 'center', marginBottom: 14,
+    },
+    avatar: {
+        width: 90, height: 90, borderRadius: 45,
+        backgroundColor: '#FFF', borderWidth: 3,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    avatarText: { fontSize: 32, fontWeight: '900' },
+    userName: { color: '#FFF', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
+    userEmail: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 3 },
+    roleBadge: {
+        backgroundColor: '#FFF', marginTop: 10,
+        paddingHorizontal: 16, paddingVertical: 5, borderRadius: 20,
+    },
+    roleBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1 },
+    completionBadge: { marginTop: 12, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 12 },
+    completionBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+    completionBarContainer: { marginTop: 14, width: '80%', alignItems: 'center' },
+    completionBarBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3, width: '100%' },
+    completionBarFill: { height: 6, backgroundColor: '#FFF', borderRadius: 3 },
+    completionPercent: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 5 },
+    infoStrip: {
+        flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+        paddingHorizontal: 20, paddingVertical: 14,
+        backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -1,
+        borderRadius: 16, elevation: 4,
+        shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 8,
+        transform: [{ translateY: -20 }],
+    },
+    infoChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    infoChipIcon: { fontSize: 13 },
+    infoChipText: { fontSize: 12, color: '#475569', fontWeight: '600', maxWidth: 130 },
+    sectionsContainer: { paddingHorizontal: 20, marginTop: -4 },
+    sectionGroupLabel: {
+        fontSize: 11, fontWeight: '800', color: '#94A3B8',
+        letterSpacing: 1.2, marginBottom: 10, marginLeft: 4, marginTop: 30,
+    },
+    menuItem: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#FFF', borderRadius: 18,
+        padding: 16, marginBottom: 10,
+        elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5,
+    },
+    menuIconBox: {
+        width: 44, height: 44, borderRadius: 13,
+        backgroundColor: '#F1F5F9',
+        justifyContent: 'center', alignItems: 'center', marginRight: 14,
+    },
+    menuIcon: { fontSize: 20 },
+    menuTextGroup: { flex: 1 },
+    menuTitle: { fontSize: 15, fontWeight: '700', color: '#1A1A1A' },
+    menuSubtitle: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+    menuStatusDot: {
+        width: 26, height: 26, borderRadius: 13,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    menuStatusIcon: { color: '#FFF', fontSize: 11, fontWeight: '800' },
+    menuArrow: { fontSize: 16, color: '#CBD5E1' },
+    logoutItem: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#FFF2F2', borderRadius: 18,
+        padding: 16, marginBottom: 10,
+        borderWidth: 1, borderColor: '#FEE2E2',
+    },
+    logoutIconBox: {
+        width: 44, height: 44, borderRadius: 13,
+        backgroundColor: '#FEE2E2',
+        justifyContent: 'center', alignItems: 'center', marginRight: 14,
+    },
+    logoutText: { flex: 1, fontSize: 15, fontWeight: '700', color: '#EF4444' },
 });
+
+export default ProfileScreen;

@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import axios from 'axios';
+import {REMINDER_URL} from "../Constants/Api";
 
 // Configure how the OS displays alerts when the app is active in the foreground
 Notifications.setNotificationHandler({
@@ -81,7 +82,7 @@ export async function scheduleHardwareStudyAlarm(subject, dayNumber, topic, targ
     if (userToken) {
         try {
             // Your FastAPI application route details mapped from your architecture review
-            const FASTAPI_REMINDER_URL = 'http://127.0.0.1:8000/alarms/';
+            const FASTAPI_REMINDER_URL = `${REMINDER_URL}alarms/`;
 
             const cloudPayload = {
                 title: `Study ${subject} - Day ${dayNumber}: ${topic}`,
