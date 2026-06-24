@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import axios from 'axios';
 import {REMINDER_URL} from "../Constants/Api";
+import {Platform} from "react-native";
 
 // Configure how the OS displays alerts when the app is active in the foreground
 Notifications.setNotificationHandler({
@@ -50,6 +51,21 @@ export async function scheduleHardwareStudyAlarm(subject, dayNumber, topic, targ
 
     const generatedAlarmId = Math.floor(Math.random() * 100000);
 
+    let channelId = "default";
+    if (Platform.OS === 'android') {
+        channelId = "study-alarms";
+
+        await Notifications.setNotificationChannelAsync(channelId, {
+            name: 'Study Alarms',
+            importance: Notifications.AndroidImportance.MAX,
+            sound: 'alarm_tone.mp3',
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F71',
+        });
+
+        console.log("🔊 Notification channel created with sound: alarm_tone.mp3");
+    }
+
     // ==========================================
     // ACTION A: LOCAL HARDWARE REGISTRY (FAIL-SAFE)
     // ==========================================
@@ -57,6 +73,7 @@ export async function scheduleHardwareStudyAlarm(subject, dayNumber, topic, targ
         content: {
             title: '🔊 Alarm rings',
             body: `Study ${subject} Now!`,
+            sound: 'alarm_tone.mp3',
             priority: Notifications.AndroidNotificationPriority.HIGH,
             categoryIdentifier: 'study-reminder',
             data: {
@@ -64,7 +81,7 @@ export async function scheduleHardwareStudyAlarm(subject, dayNumber, topic, targ
                 task: `Study ${subject}`,
                 screen: 'Teach',
                 subjectName: subject,
-                topicName: topic,      // e.g., "React Navigation"
+                topicName: topic,
                 dayNumber: Number(dayNumber),
             },
         },
@@ -82,7 +99,7 @@ export async function scheduleHardwareStudyAlarm(subject, dayNumber, topic, targ
     if (userToken) {
         try {
             // Your FastAPI application route details mapped from your architecture review
-            const FASTAPI_REMINDER_URL = `${REMINDER_URL}alarms/`;
+            const FASTAPI_REMINDER_URL = `${REMINDER_URL}/alarms/`;
 
             const cloudPayload = {
                 title: `Study ${subject} - Day ${dayNumber}: ${topic}`,

@@ -1,4 +1,5 @@
-import React, { useContext, useState, useCallback, useEffect } from 'react';
+import React, { useContext, useState, useCallback, useEffect, useRef } from 'react';
+
 import {
     View, Text, ScrollView, StyleSheet, TouchableOpacity,
     ActivityIndicator, RefreshControl, StatusBar, SafeAreaView, Alert, Dimensions
@@ -6,8 +7,9 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { UserContext } from '../context/UserContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import axios from 'axios';
-import {AI_URL, ASSESSMENT_URL} from '../Constants/Api';
+import { AI_URL, ASSESSMENT_URL } from '../Constants/Api';
 
 const { width } = Dimensions.get('window');
 
@@ -37,7 +39,7 @@ export default function HomeScreen({ navigation }) {
         progress: 0
     });
 
-    // Separate standalone recap loader
+    // Standalone recap loader (clears local cache pointer before request)
     const loadRecap = async (currentUserId, currentToken) => {
         const targetId = currentUserId || userData?.id;
         const targetToken = currentToken || userToken;
@@ -45,25 +47,22 @@ export default function HomeScreen({ navigation }) {
         if (!targetId || !targetToken) return;
 
         try {
-            console.log(`🚀 Hitting backend for Recap: ${ASSESSMENT_URL}/today_recap/${targetId}`);
+            console.log(`🚀 Hitting backend for Fresh Recap: ${AI_URL}/today_recap/${targetId}`);
             const res = await axios.get(`${AI_URL}/today_recap/${targetId}`, {
-                headers: { Authorization: `Bearer ${targetToken}` }
+                headers: {
+                    Authorization: `Bearer ${targetToken}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
             });
-            console.log("✅ Recap Payload Data received:", res.data);
+            console.log("✅ Fresh Recap Payload Data received:", res.data);
             setRecap(res.data);
         } catch (err) {
             console.log("❌ HomeScreen Recap API Error:", err.message);
         }
     };
 
-    // Force call when userData and token populates reactively
-    useEffect(() => {
-        if (userData?.id && userToken) {
-            loadRecap(userData.id, userToken);
-        }
-    }, [userData?.id, userToken]);
-
-    // Keep status parameters in sync with changes in auth mapping
+    // Synchronize authentication indicators cleanly
     useEffect(() => {
         setStatus(prev => ({
             ...prev,
@@ -75,20 +74,22 @@ export default function HomeScreen({ navigation }) {
     }, [isComplete, testCount, hasRoadmap, userData?.department]);
 
     /**
-     * SYNC LOGIC: Background data refresh
+     * SYNC LOGIC: Hits your API and re-aggregates active metadata states
      */
-    const syncAllData = async (isManualRefresh = false) => {
-        // Fallback safety to stop premature empty calls
+    const syncAllData = async (isManualRefresh = false, shouldShowMainLoader = false) => {
         if (!userData?.id || !userToken) {
             setLoading(false);
             return;
         }
 
-        if (isManualRefresh) setRefreshing(true);
-        else setLoading(true);
+        if (isManualRefresh) {
+            setRefreshing(true);
+        } else if (shouldShowMainLoader) {
+            setLoading(true);
+        }
 
         try {
-            console.log(`🚀 Hitting backend for Status: ${ASSESSMENT_URL}/user-status/${userData.id}/`);
+            console.log(`🚀 Pulling current status metric: ${ASSESSMENT_URL}/user-status/${userData.id}/`);
             const res = await axios.get(`${ASSESSMENT_URL}/user-status/${userData.id}/`, {
                 headers: { Authorization: `Bearer ${userToken}` }
             });
@@ -116,7 +117,6 @@ export default function HomeScreen({ navigation }) {
                 await refreshRoadmap();
             }
 
-            // Keep recap synced up in the background too
             await loadRecap(userData.id, userToken);
 
         } catch (e) {
@@ -127,10 +127,11 @@ export default function HomeScreen({ navigation }) {
         }
     };
 
+    // FIXES STUCK RECAP DATA: Fires sync sequence EVERY time screen gains active window viewport focus
     useFocusEffect(
         useCallback(() => {
             if (userData?.id && userToken) {
-                syncAllData();
+                syncAllData(false, !recap);
             }
         }, [userToken, userData?.id])
     );
@@ -149,13 +150,27 @@ export default function HomeScreen({ navigation }) {
             if (response.status === 201 || response.status === 200) {
                 Alert.alert("Success 🎉", "Your AI Learning Roadmap is ready!");
                 if (updateUser) await updateUser({ hasRoadmap: true });
-                await syncAllData();
+                await syncAllData(false, true);
             }
         } catch (err) {
             Alert.alert("Error", "Could not build roadmap. Please try again.");
             setLoading(false);
         }
     };
+
+    const renderStepDots = (current, total) => (
+        <View style={styles.stepDots}>
+            {Array.from({ length: total }).map((_, i) => (
+                <View
+                    key={i}
+                    style={[
+                        styles.dot,
+                        i < current ? styles.dotDone : i === current ? styles.dotActive : styles.dotInactive
+                    ]}
+                />
+            ))}
+        </View>
+    );
 
     const renderMainCard = () => {
         if (loading && !refreshing) {
@@ -169,12 +184,17 @@ export default function HomeScreen({ navigation }) {
 
         if (!status.profile_complete) {
             return (
-                <View style={[styles.card, { backgroundColor: '#64748B' }]}>
-                    <Text style={styles.cardLabel}>STEP 1: ACCOUNT</Text>
-                    <Text style={styles.cardTitle}>Complete Academic Info</Text>
-                    <Text style={styles.cardSub}>Update your branch and university details to unlock AI features.</Text>
+                <View style={[styles.card, { backgroundColor: '#1E293B' }]}>
+                    <View style={styles.cardTopRow}>
+                        <View style={styles.stepPill}>
+                            <Text style={styles.stepPillText}>STEP 1 OF 3</Text>
+                        </View>
+                        {renderStepDots(0, 3)}
+                    </View>
+                    <Text style={styles.cardTitle}>Complete Your Profile</Text>
+                    <Text style={styles.cardSub}>Add your branch and university to unlock AI-powered features.</Text>
                     <TouchableOpacity style={styles.whiteBtn} onPress={() => navigation.navigate('EditLearningInfo')}>
-                        <Text style={[styles.btnText, { color: '#64748B' }]}>Finish Profile →</Text>
+                        <Text style={[styles.btnText, { color: '#1E293B' }]}>Finish Profile →</Text>
                     </TouchableOpacity>
                 </View>
             );
@@ -182,15 +202,27 @@ export default function HomeScreen({ navigation }) {
 
         if (status.test_count < 3) {
             return (
-                <View style={[styles.card, { backgroundColor: '#4F46E5' }]}>
-                    <View style={styles.rowBetween}>
-                        <Text style={styles.cardLabel}>STEP 2: DIAGNOSTIC</Text>
-                        <Text style={styles.badgeText}>{status.test_count}/3 Done</Text>
+                <View style={[styles.card, { backgroundColor: '#4338CA' }]}>
+                    <View style={styles.cardTopRow}>
+                        <View style={styles.stepPill}>
+                            <Text style={styles.stepPillText}>STEP 2 OF 3</Text>
+                        </View>
+                        {renderStepDots(1, 3)}
                     </View>
-                    <Text style={styles.cardTitle}>Verify Your Skills</Text>
-                    <Text style={styles.cardSub}>Complete {Math.max(0, 3 - status.test_count)} more tests for AI mapping.</Text>
+                    <View style={styles.rowBetween}>
+                        <Text style={styles.cardTitle}>Skill Diagnostic</Text>
+                        <View style={styles.countBadge}>
+                            <Text style={styles.countBadgeText}>{status.test_count}/3</Text>
+                        </View>
+                    </View>
+                    <Text style={styles.cardSub}>
+                        {Math.max(0, 3 - status.test_count)} more {3 - status.test_count === 1 ? 'test' : 'tests'} to unlock your AI learning map.
+                    </Text>
+                    <View style={styles.miniProgressTrack}>
+                        <View style={[styles.miniProgressFill, { width: `${(status.test_count / 3) * 100}%` }]} />
+                    </View>
                     <TouchableOpacity style={styles.whiteBtn} onPress={() => navigation.navigate('DiagnosticTest')}>
-                        <Text style={[styles.btnText, { color: '#4F46E5' }]}>
+                        <Text style={[styles.btnText, { color: '#4338CA' }]}>
                             {status.test_count === 0 ? 'Start Assessment' : `Continue Test ${status.test_count + 1}`} →
                         </Text>
                     </TouchableOpacity>
@@ -200,12 +232,22 @@ export default function HomeScreen({ navigation }) {
 
         if (!status.has_roadmap) {
             return (
-                <View style={[styles.card, { backgroundColor: '#7C3AED' }]}>
-                    <Text style={styles.cardLabel}>FINAL STEP</Text>
+                <View style={[styles.card, { backgroundColor: '#6D28D9' }]}>
+                    <View style={styles.cardTopRow}>
+                        <View style={styles.stepPill}>
+                            <Text style={styles.stepPillText}>FINAL STEP</Text>
+                        </View>
+                        {renderStepDots(2, 3)}
+                    </View>
                     <Text style={styles.cardTitle}>Build Your Roadmap</Text>
-                    <Text style={styles.cardSub}>Ready to generate your personalized {status.domain || 'Selected'} plan.</Text>
+                    <Text style={styles.cardSub}>
+                        All tests done! Generate your personalised {status.domain || 'CS'} learning path now.
+                    </Text>
+                    <View style={styles.domainTag}>
+                        <Text style={styles.domainTagText}>🎯 {status.domain}</Text>
+                    </View>
                     <TouchableOpacity style={styles.whiteBtn} onPress={handleGenerateRoadmap}>
-                        <Text style={[styles.btnText, { color: '#7C3AED' }]}>Generate Now →</Text>
+                        <Text style={[styles.btnText, { color: '#6D28D9' }]}>Generate Roadmap →</Text>
                     </TouchableOpacity>
                 </View>
             );
@@ -213,20 +255,27 @@ export default function HomeScreen({ navigation }) {
 
         return (
             <TouchableOpacity
-                style={[styles.card, { backgroundColor: '#9788FB' }]}
+                style={[styles.card, { backgroundColor: '#7C6FF7' }]}
                 onPress={() => navigation.navigate('Roadmap')}
                 disabled={isDataLoading}
             >
-                <Text style={styles.cardLabel}>PHASE 4: LEARNING</Text>
+                <View style={styles.cardTopRow}>
+                    <View style={styles.stepPill}>
+                        <Text style={styles.stepPillText}>LEARNING</Text>
+                    </View>
+                    <View style={styles.progressLabelRow}>
+                        <Text style={styles.progressLabelText}>{Math.min(100, Math.max(0, status.progress))}% done</Text>
+                    </View>
+                </View>
                 <Text style={styles.cardTitle}>{roadmap?.title || "My Learning Path"}</Text>
-                <View style={styles.progressContainer}>
+                <View style={styles.progressTrack}>
                     <View style={[styles.progressFill, { width: `${Math.min(100, Math.max(5, status.progress))}%` }]} />
                 </View>
                 <View style={styles.whiteBtn}>
                     {isDataLoading ? (
-                        <ActivityIndicator color="#9788FB" size="small" />
+                        <ActivityIndicator color="#7C6FF7" size="small" />
                     ) : (
-                        <Text style={[styles.btnText, { color: '#9788FB' }]}>Resume Learning →</Text>
+                        <Text style={[styles.btnText, { color: '#7C6FF7' }]}>Resume Learning →</Text>
                     )}
                 </View>
             </TouchableOpacity>
@@ -236,71 +285,66 @@ export default function HomeScreen({ navigation }) {
     const rawName = userData?.name || 'Student';
     const cleanFirstName = typeof rawName === 'string' ? rawName.split(' ')[0] : 'Student';
 
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Good morning';
+        if (hour < 17) return 'Good afternoon';
+        return 'Good evening';
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FE" />
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => syncAllData(true)} />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => syncAllData(true, false)} tintColor="#4F46E5" />}
             >
+                {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.welcome}>Hello {cleanFirstName}!</Text>
-                    <Text style={styles.subWelcome}>
-                        {userData?.department || 'Engineering'} • {userData?.university || 'BMIT Solapur'}
+                    <View>
+                        <Text style={styles.greeting}>{getGreeting()},</Text>
+                        <Text style={styles.welcome}>{cleanFirstName} 👋</Text>
+                    </View>
+                    <View style={styles.avatarCircle}>
+                        <Text style={styles.avatarText}>{cleanFirstName.charAt(0).toUpperCase()}</Text>
+                    </View>
+                </View>
+
+                {/* Meta info pill */}
+                <View style={styles.metaPill}>
+                    <Text style={styles.metaText}>
+                        🎓 {userData?.department || 'Engineering'}  ·  {userData?.university || 'BMIT Solapur'}
                     </Text>
                 </View>
 
-                {renderMainCard()}
-
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
-                <View style={styles.actionGrid}>
-                    <ActionCard label="Profile" icon="🎓" onPress={() => navigation.navigate('EditLearningInfo')} />
-                    <ActionCard label="Test" icon="📋" onPress={() => navigation.navigate('DiagnosticTest')} />
-                    <ActionCard label="AI Chat" icon="🤖" onPress={() => navigation.navigate('Main', { screen: 'AI-Chat' })} />
+                {/* Main Action Card */}
+                <View style={styles.cardWrapper}>
+                    {renderMainCard()}
                 </View>
 
-                {/* FIXED: Open conditional block that detects payload elements accurately */}
-                {recap &&
-                (recap.mastered?.length > 0 ||
-                    recap.loopholes?.length > 0 ||
-                    recap.topic) ? (
-
+                {/* Recap Card */}
+                {recap && (recap.mastered?.length > 0 || recap.loopholes?.length > 0 || recap.topic) ? (
                     <View style={styles.recapCard}>
-
-                        <View style={styles.recapHeader}>
-                            <View>
-                                <Text style={styles.recapBadge}>
-                                    🎯 DAILY LEARNING RECAP
-                                </Text>
-
-                                <Text style={styles.recapTitle}>
-                                    Day {recap.day}
-                                </Text>
-
-                                <Text style={styles.recapTopic}>
-                                    📚 {recap.topic}
-                                </Text>
+                        <View style={styles.recapHeaderRow}>
+                            <View style={styles.recapBadgePill}>
+                                <Text style={styles.recapBadgeText}>🎯 DAILY RECAP</Text>
                             </View>
-
-                            <Text style={styles.recapEmoji}>
-                                🧠
-                            </Text>
+                            <Text style={styles.recapEmoji}>🧠</Text>
                         </View>
+
+                        <Text style={styles.recapDay}>Day {recap.day}</Text>
+                        <Text style={styles.recapTopic}>📚 {recap.topic}</Text>
+
+                        <View style={styles.recapDivider} />
 
                         {recap.mastered?.length > 0 && (
                             <View style={styles.recapSection}>
-
-                                <Text style={styles.masteredHeading}>
-                                    🚀 Concepts Mastered
-                                </Text>
-
+                                <Text style={styles.masteredHeading}>🚀 Concepts Mastered</Text>
                                 <View style={styles.chipsContainer}>
                                     {recap.mastered.map((item, index) => (
                                         <View key={index} style={styles.masteredChip}>
-                                            <Text style={styles.masteredText}>
-                                                ✅ {item}
-                                            </Text>
+                                            <Text style={styles.masteredText}>✅ {item}</Text>
                                         </View>
                                     ))}
                                 </View>
@@ -309,17 +353,11 @@ export default function HomeScreen({ navigation }) {
 
                         {recap.loopholes?.length > 0 && (
                             <View style={styles.recapSection}>
-
-                                <Text style={styles.revisionHeading}>
-                                    🔥 Revision Needed
-                                </Text>
-
+                                <Text style={styles.revisionHeading}>🔥 Needs Revision</Text>
                                 <View style={styles.chipsContainer}>
                                     {recap.loopholes.map((item, index) => (
                                         <View key={index} style={styles.revisionChip}>
-                                            <Text style={styles.revisionText}>
-                                                ⚠️ {item}
-                                            </Text>
+                                            <Text style={styles.revisionText}>⚠️ {item}</Text>
                                         </View>
                                     ))}
                                 </View>
@@ -328,168 +366,209 @@ export default function HomeScreen({ navigation }) {
 
                         <View style={styles.footerBox}>
                             <Text style={styles.footerText}>
-                                💡 Keep learning consistently to strengthen weak areas and maintain your streak.
+                                💡 Stay consistent — even 30 mins daily compounds into mastery.
                             </Text>
                         </View>
-
                     </View>
-
                 ) : null}
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-const ActionCard = ({ label, icon, onPress }) => (
-    <TouchableOpacity style={styles.actionItem} onPress={onPress}>
-        <View style={styles.iconCircle}>
-            <Text style={{ fontSize: 22 }}>{icon}</Text>
-        </View>
-        <Text style={styles.actionLabel}>{label}</Text>
-    </TouchableOpacity>
-);
-
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FE' },
-    scrollContent: { paddingBottom: 40 },
-    header: { paddingHorizontal: 20, marginTop: 20, marginBottom: 25 },
-    welcome: { fontSize: 26, fontWeight: 'bold', color: '#1E293B' },
-    subWelcome: { color: '#64748B', fontSize: 14, marginTop: 4 },
-    card: { marginHorizontal: 20, padding: 24, borderRadius: 32, minHeight: 220, marginBottom: 10, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10 },
-    center: { justifyContent: 'center', alignItems: 'center' },
-    syncText: { marginTop: 12, color: '#64748B', fontWeight: '500', fontSize: 14 },
-    rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cardLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
-    badgeText: { color: '#FFF', fontSize: 12, fontWeight: 'bold', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-    cardTitle: { color: '#FFF', fontSize: 24, fontWeight: 'bold', marginTop: 12 },
-    cardSub: { color: 'rgba(255,255,255,0.85)', fontSize: 15, marginTop: 8, lineHeight: 22 },
-    whiteBtn: { backgroundColor: '#FFF', padding: 16, borderRadius: 18, alignItems: 'center', marginTop: 20 },
-    btnText: { fontWeight: 'bold', fontSize: 16 },
-    progressContainer: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 4, marginVertical: 20 },
-    progressFill: { height: 8, backgroundColor: '#FFF', borderRadius: 4 },
-    sectionTitle: { paddingHorizontal: 20, fontSize: 19, fontWeight: 'bold', marginTop: 30, marginBottom: 15, color: '#1E293B' },
-    actionGrid: { flexDirection: 'row', paddingHorizontal: 20, gap: 12 },
-    actionItem: { flex: 1, backgroundColor: '#FFF', paddingVertical: 20, borderRadius: 24, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-    iconCircle: { width: 45, height: 45, borderRadius: 22, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    actionLabel: { fontSize: 13, fontWeight: 'bold', color: '#475569' },
-    recapCard: {
-        marginHorizontal: 20,
-        marginTop: 25,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 30,
-        padding: 22,
+    container: { flex: 1, backgroundColor: '#F0F2FF' },
+    scrollContent: { paddingBottom: 48 },
 
-        shadowColor: '#0F172A',
-        shadowOffset: {
-            width: 0,
-            height: 6
-        },
-        shadowOpacity: 0.08,
-        shadowRadius: 18,
-
-        elevation: 4,
-
-        borderWidth: 1,
-        borderColor: '#EEF2FF'
-    },
-
-    recapHeader: {
+    // Header
+    header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 18
+        paddingHorizontal: 22,
+        paddingTop: 24,
+        paddingBottom: 10,
     },
+    greeting: { fontSize: 14, color: '#64748B', fontWeight: '500' },
+    welcome: { fontSize: 28, fontWeight: '800', color: '#0F172A', marginTop: 2 },
+    avatarCircle: {
+        width: 46,
+        height: 46,
+        borderRadius: 23,
+        backgroundColor: '#4F46E5',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    avatarText: { color: '#FFF', fontWeight: '800', fontSize: 18 },
 
-    recapBadge: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#6366F1',
-        letterSpacing: 1
+    // Meta pill
+    metaPill: {
+        marginHorizontal: 22,
+        marginBottom: 20,
+        backgroundColor: '#E0E7FF',
+        borderRadius: 20,
+        paddingVertical: 7,
+        paddingHorizontal: 14,
+        alignSelf: 'flex-start',
     },
+    metaText: { fontSize: 12, color: '#4338CA', fontWeight: '600' },
 
-    recapTitle: {
-        fontSize: 24,
-        fontWeight: '800',
-        color: '#0F172A',
-        marginTop: 4
+    // Card
+    cardWrapper: { paddingHorizontal: 20, marginBottom: 8 },
+    card: {
+        padding: 26,
+        borderRadius: 28,
+        minHeight: 230,
+        elevation: 8,
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
     },
+    center: { justifyContent: 'center', alignItems: 'center' },
+    syncText: { marginTop: 12, color: '#64748B', fontWeight: '600', fontSize: 14 },
 
-    recapTopic: {
-        fontSize: 15,
-        color: '#64748B',
-        marginTop: 4,
-        fontWeight: '600'
-    },
-
-    recapEmoji: {
-        fontSize: 42
-    },
-
-    recapSection: {
-        marginTop: 16
-    },
-
-    masteredHeading: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#16A34A',
-        marginBottom: 10
-    },
-    chipsContainer: {
+    cardTopRow: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
         justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
     },
-    revisionHeading: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#DC2626',
-        marginBottom: 10
+    stepPill: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
     },
+    stepPillText: { color: '#FFF', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+
+    stepDots: { flexDirection: 'row', gap: 5 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    dotDone: { backgroundColor: '#FFF' },
+    dotActive: { backgroundColor: 'rgba(255,255,255,0.5)' },
+    dotInactive: { backgroundColor: 'rgba(255,255,255,0.2)' },
+
+    rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    countBadge: {
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        borderRadius: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+    },
+    countBadgeText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+
+    cardTitle: { color: '#FFF', fontSize: 24, fontWeight: '800', marginBottom: 8 },
+    cardSub: { color: 'rgba(255,255,255,0.82)', fontSize: 15, lineHeight: 22 },
+
+    miniProgressTrack: {
+        height: 5,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 3,
+        marginTop: 16,
+        marginBottom: 4,
+    },
+    miniProgressFill: { height: 5, backgroundColor: '#FFF', borderRadius: 3 },
+
+    domainTag: {
+        alignSelf: 'flex-start',
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        borderRadius: 20,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        marginTop: 14,
+        marginBottom: 2,
+    },
+    domainTagText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+
+    progressLabelRow: {},
+    progressLabelText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '700' },
+    progressTrack: {
+        height: 7,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 4,
+        marginVertical: 18,
+    },
+    progressFill: { height: 7, backgroundColor: '#FFF', borderRadius: 4 },
+
+    whiteBtn: {
+        backgroundColor: '#FFF',
+        paddingVertical: 15,
+        borderRadius: 18,
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    btnText: { fontWeight: '800', fontSize: 15 },
+
+    // Recap Card
+    recapCard: {
+        marginHorizontal: 20,
+        marginTop: 22,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 28,
+        padding: 22,
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.08,
+        shadowRadius: 16,
+        elevation: 4,
+        borderWidth: 1,
+        borderColor: '#E0E7FF',
+    },
+    recapHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    recapBadgePill: {
+        backgroundColor: '#EEF2FF',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+    },
+    recapBadgeText: { fontSize: 10, fontWeight: '800', color: '#4338CA', letterSpacing: 1 },
+    recapEmoji: { fontSize: 36 },
+    recapDay: { fontSize: 26, fontWeight: '800', color: '#0F172A' },
+    recapTopic: { fontSize: 14, color: '#64748B', marginTop: 4, fontWeight: '600' },
+    recapDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 },
+
+    recapSection: { marginBottom: 14 },
+    masteredHeading: { fontSize: 14, fontWeight: '700', color: '#16A34A', marginBottom: 10 },
+    revisionHeading: { fontSize: 14, fontWeight: '700', color: '#DC2626', marginBottom: 10 },
+    chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
     masteredChip: {
         backgroundColor: '#F0FDF4',
         borderRadius: 14,
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        marginBottom: 8,
+        paddingVertical: 9,
+        paddingHorizontal: 13,
         borderWidth: 1,
-        borderColor: '#BBF7D0'
+        borderColor: '#BBF7D0',
     },
+    masteredText: { color: '#166534', fontWeight: '600', fontSize: 13 },
 
     revisionChip: {
         backgroundColor: '#FEF2F2',
         borderRadius: 14,
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        marginBottom: 8,
+        paddingVertical: 9,
+        paddingHorizontal: 13,
         borderWidth: 1,
-        borderColor: '#FECACA'
+        borderColor: '#FECACA',
     },
-
-    masteredText: {
-        color: '#166534',
-        fontWeight: '600',
-        fontSize: 14
-    },
-
-    revisionText: {
-        color: '#991B1B',
-        fontWeight: '600',
-        fontSize: 14
-    },
+    revisionText: { color: '#991B1B', fontWeight: '600', fontSize: 13 },
 
     footerBox: {
-        marginTop: 18,
+        marginTop: 14,
         padding: 14,
-        backgroundColor: '#F8FAFC',
-        borderRadius: 16
+        backgroundColor: '#F8FAFF',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#E0E7FF',
     },
-
-    footerText: {
-        fontSize: 13,
-        lineHeight: 20,
-        color: '#475569',
-        fontWeight: '500'
-    }
+    footerText: { fontSize: 13, lineHeight: 20, color: '#475569', fontWeight: '500' },
 });

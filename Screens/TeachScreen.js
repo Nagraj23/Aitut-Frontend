@@ -78,7 +78,7 @@ const MessageBubble = React.memo(({ item }) => {
     const copyToClipboard = () => {
         if (!textContent) return;
         Clipboard.setString(textContent);
-        if (Platform.OS === 'android') ToastAndroid.show("Copied!", ToastAndroid.SHORT);
+        if (Platform.OS === 'android') ToastAndroid.show("Copied to clipboard", ToastAndroid.SHORT);
     };
 
     const handleSpeech = async () => {
@@ -101,7 +101,7 @@ const MessageBubble = React.memo(({ item }) => {
             {!isUser && (
                 <View style={styles.botIconContainer}>
                     <View style={styles.botIconShadow}>
-                        <Ionicons name="school" size={18} color="#4F46E5" />
+                        <Ionicons name="sparkles" size={16} color="#4F46E5" />
                     </View>
                 </View>
             )}
@@ -119,24 +119,27 @@ const MessageBubble = React.memo(({ item }) => {
                                 {renderSafeText(textContent)}
                             </Text>
                         ) : (
-                            <Text style={styles.thinkingText}>✨ Thinking...</Text>
+                            <View style={styles.thinkingContainer}>
+                                <ActivityIndicator size="small" color="#4F46E5" style={{ marginRight: 8 }} />
+                                <Text style={styles.thinkingText}>AI Tutor is thinking...</Text>
+                            </View>
                         )}
 
                         {textContent !== "✨ Thinking..." && textContent !== "" && (
                             <View style={styles.bubbleFooter}>
                                 <TouchableOpacity onPress={handleSpeech} style={styles.footerIcon}>
                                     <Ionicons
-                                        name={isSpeaking ? "stop-circle" : "volume-high-outline"}
-                                        size={16}
-                                        color={isSpeaking ? "#E11D48" : "#4F46E5"}
+                                        name={isSpeaking ? "stop-circle-outline" : "volume-medium-outline"}
+                                        size={15}
+                                        color={isSpeaking ? "#EF4444" : "#4F46E5"}
                                     />
-                                    <Text style={[styles.footerText, isSpeaking && {color: "#E11D48"}]}>
+                                    <Text style={[styles.footerText, isSpeaking && {color: "#EF4444"}]}>
                                         {isSpeaking ? "Stop" : "Listen"}
                                     </Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity onPress={copyToClipboard} style={[styles.footerIcon, {marginLeft: 15}]}>
-                                    <Ionicons name="copy-outline" size={14} color="#94A3B8" />
+                                <TouchableOpacity onPress={copyToClipboard} style={[styles.footerIcon, {marginLeft: 16}]}>
+                                    <Ionicons name="copy-outline" size={14} color="#64748B" />
                                     <Text style={styles.footerText}>Copy</Text>
                                 </TouchableOpacity>
                             </View>
@@ -172,7 +175,6 @@ const TeachScreen = ({ navigation, route }) => {
     const [hasMoreHistory, setHasMoreHistory] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
 
-    // 🎯 FIX 1: Explicit block state variable to lock down layout scroll jump drops
     const [justLoadedMore, setJustLoadedMore] = useState(false);
 
     const scrollRef = useRef(null);
@@ -196,15 +198,14 @@ const TeachScreen = ({ navigation, route }) => {
             );
 
             const data = await response.json();
-
             console.log("SESSION WRAPUP:", data);
 
             Alert.alert(
                 "Session Completed 🎉",
-                "Today's learning session has been wrapped up.",
+                "Today's learning session has been wrapped up successfully.",
                 [
                     {
-                        text: "OK",
+                        text: "Done",
                         onPress: () => navigation.goBack()
                     }
                 ]
@@ -212,14 +213,10 @@ const TeachScreen = ({ navigation, route }) => {
 
         } catch (error) {
             console.log("WRAPUP ERROR:", error);
-
-            Alert.alert(
-                "Error",
-                "Failed to complete session."
-            );
+            Alert.alert("Error", "Failed to complete session.");
         }
     };
-    // Initial Chat Session History Fetch
+
     useEffect(() => {
         const prepareSession = async () => {
             if (!userData || !userData.id) {
@@ -257,7 +254,6 @@ const TeachScreen = ({ navigation, route }) => {
         prepareSession();
     }, [day, subject, userData]);
 
-    // Automatically trigger initial AI question if starting clean
     useEffect(() => {
         if (!isHistoryLoading && userData?.id && messages.length === 1 && messages[0]?.id?.startsWith("init_") && !hasStarted) {
             setHasStarted(true);
@@ -265,12 +261,10 @@ const TeachScreen = ({ navigation, route }) => {
         }
     }, [isHistoryLoading, userData, messages, hasStarted]);
 
-    // Dynamic Pagination History Fetch
     const handleLoadMoreHistory = async () => {
         if (isLoadMoreLoading || !hasMoreHistory || !userData?.id || loading) return;
 
         setIsLoadMoreLoading(true);
-        // Toggle the layout scroll block flag immediately
         setJustLoadedMore(true);
         const nextPage = currentPage + 1;
 
@@ -306,7 +300,6 @@ const TeachScreen = ({ navigation, route }) => {
             console.log("❌ [LOADMORE ERROR]:", err);
         } finally {
             setIsLoadMoreLoading(false);
-            // Release the scroll block with a minor timeout delay to let layout engine compute positions
             setTimeout(() => setJustLoadedMore(false), 300);
         }
     };
@@ -397,7 +390,7 @@ const TeachScreen = ({ navigation, route }) => {
                     <ActivityIndicator size="small" color="#4F46E5" style={{ paddingVertical: 6 }} />
                 ) : (
                     <TouchableOpacity style={styles.loadMoreButton} onPress={handleLoadMoreHistory}>
-                        <Ionicons name="time-outline" size={14} color="#4F46E5" style={{ marginRight: 6 }} />
+                        <Ionicons name="refresh-outline" size={14} color="#4F46E5" style={{ marginRight: 6 }} />
                         <Text style={styles.loadMoreButtonText}>Load Older Messages</Text>
                     </TouchableOpacity>
                 )}
@@ -411,18 +404,21 @@ const TeachScreen = ({ navigation, route }) => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar backgroundColor="#4F46E5" barStyle="light-content" />
+            <StatusBar backgroundColor="#1E1B4B" barStyle="light-content" />
+
+            {/* Dark Premium Studio-Style Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={24} color="#FFF" />
+                    <Ionicons name="chevron-back" size={22} color="#FFF" />
                 </TouchableOpacity>
                 <View style={styles.headerTextContainer}>
                     <Text style={styles.headerTitle} numberOfLines={1}>{topic}</Text>
-                    <View style={styles.headerBadge}><Text style={styles.headerSub}>{subject} • DAY {day}</Text></View>
+                    <Text style={styles.headerSub} numberOfLines={1}>{subject} • DAY {day}</Text>
                 </View>
                 <TouchableOpacity
                     onPress={handleFinishSession}
                     style={styles.finishBtn}
+                    activeOpacity={0.8}
                 >
                     <Text style={styles.finishText}>Finish</Text>
                 </TouchableOpacity>
@@ -440,8 +436,7 @@ const TeachScreen = ({ navigation, route }) => {
                     renderItem={({ item }) => <MessageBubble item={item} />}
                     contentContainerStyle={styles.listContent}
                     ListHeaderComponent={renderListHeader}
-
-                    // 🎯 FIX 2: Conditionally allow layout scroll tracking transitions
+                    showsVerticalScrollIndicator={false}
                     onContentSizeChange={() => {
                         if (!justLoadedMore && !isLoadMoreLoading) {
                             scrollRef.current?.scrollToEnd({ animated: true });
@@ -453,17 +448,24 @@ const TeachScreen = ({ navigation, route }) => {
                         }
                     }}
                 />
+
+                {/* Clean Bottom Input Dock */}
                 <View style={styles.inputWrapper}>
                     <View style={styles.inputContainer}>
                         <TextInput
                             style={styles.textInput}
-                            placeholder="Ask a doubt..."
+                            placeholder="Ask a doubt or reply..."
+                            placeholderTextColor="#94A3B8"
                             value={inputText}
                             onChangeText={setInputText}
                             multiline
                         />
-                        <TouchableOpacity onPress={onSend} style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]} disabled={loading || !inputText.trim()}>
-                            {loading ? <ActivityIndicator color="#FFF" /> : <Ionicons name="send" size={18} color="#FFF" />}
+                        <TouchableOpacity
+                            onPress={onSend}
+                            style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+                            disabled={loading || !inputText.trim()}
+                        >
+                            {loading ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="arrow-up" size={18} color="#FFF" />}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -472,50 +474,50 @@ const TeachScreen = ({ navigation, route }) => {
     );
 };
 
-/* --- NATIVE APP STYLING --- */
+/* --- ENHANCED APP STYLING --- */
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#4F46E5' },
-    loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#4F46E5' },
-    backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
-    headerTextContainer: { flex: 1, marginLeft: 15 },
-    headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '900' },
-    headerBadge: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 6 },
-    headerSub: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-    finishBtn: { backgroundColor: '#10B981', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-    finishText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
-    chatArea: { flex: 1, backgroundColor: '#F8FAFC', borderTopLeftRadius: 32, borderTopRightRadius: 32 },
-    listContent: { padding: 20 },
-    msgRow: { marginBottom: 20, flexDirection: 'row' },
+    container: { flex: 1, backgroundColor: '#1E1B4B' },
+    loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#1E1B4B' },
+    backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+    headerTextContainer: { flex: 1, marginLeft: 14 },
+    headerTitle: { color: '#FFF', fontSize: 17, fontWeight: '800' },
+    headerSub: { color: '#93C5FD', fontSize: 11, fontWeight: '600', marginTop: 2, letterSpacing: 0.2 },
+    finishBtn: { backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 9, borderRadius: 12, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
+    finishText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+    chatArea: { flex: 1, backgroundColor: '#F8FAFC', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+    listContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
+    msgRow: { marginBottom: 16, flexDirection: 'row', alignItems: 'flex-end' },
     userRow: { justifyContent: 'flex-end' },
     botRow: { justifyContent: 'flex-start' },
-    botIconContainer: { marginRight: 8, justifyContent: 'flex-end' },
-    botIconShadow: { width: 36, height: 36, borderRadius: 14, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', elevation: 3 },
-    bubble: { maxWidth: width * 0.78, padding: 16, borderRadius: 22 },
-    userBubble: { backgroundColor: '#4F46E5', borderBottomRightRadius: 4 },
-    botBubble: { backgroundColor: '#FFF', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#E2E8F0' },
+    botIconContainer: { marginRight: 10, marginBottom: 4 },
+    botIconShadow: { width: 32, height: 36, borderRadius: 10, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, borderWidth: 1, borderColor: '#EDF2F7' },
+    bubble: { maxWidth: width * 0.76, padding: 14, borderRadius: 20 },
+    userBubble: { backgroundColor: '#4F46E5', borderBottomRightRadius: 4, shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 1 },
+    botBubble: { backgroundColor: '#FFF', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 4, elevation: 1 },
     warningBubble: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A', borderWidth: 1.5 },
-    userText: { color: '#FFF', fontSize: 15, fontWeight: '500' },
-    bubbleFooter: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'flex-end' },
-    footerIcon: { flexDirection: 'row', alignItems: 'center' },
-    footerText: { color: '#94A3B8', fontSize: 11, marginLeft: 4, fontWeight: '600' },
-    inputWrapper: { padding: 16, backgroundColor: '#FFF' },
-    inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 15 },
-    textInput: { flex: 1, fontSize: 15, maxHeight: 100, paddingVertical: 10, color: '#000' },
-    sendBtn: { width: 38, height: 38, borderRadius: 15, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-    sendBtnDisabled: { backgroundColor: '#CBD5E1' },
+    userText: { color: '#FFF', fontSize: 15, fontWeight: '500', lineHeight: 21 },
+    bubbleFooter: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
+    footerIcon: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
+    footerText: { color: '#64748B', fontSize: 12, marginLeft: 4, fontWeight: '600' },
+    inputWrapper: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFF', borderTopWidth: 1, borderColor: '#EDF2F7' },
+    inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 2 },
+    textInput: { flex: 1, fontSize: 15, maxHeight: 90, paddingVertical: 10, color: '#1E293B', fontWeight: '500' },
+    sendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
+    sendBtnDisabled: { backgroundColor: '#E2E8F0' },
 
     botTextContainer: { width: '100%' },
-    thinkingText: { color: '#475569', fontStyle: 'italic', fontSize: 15 },
-    mdNormal: { fontSize: 15, color: '#1E293B', lineHeight: 22 },
-    mdBold: { fontSize: 15, color: '#4F46E5', fontWeight: '800', lineHeight: 22 },
-    mdHeading: { fontSize: 18, color: '#0F172A', fontWeight: '900', marginTop: 6, marginBottom: 4 },
-    standardLine: { marginVertical: 2 },
-    bulletLine: { marginVertical: 2, paddingLeft: 8 },
+    thinkingContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+    thinkingText: { color: '#64748B', fontStyle: 'italic', fontSize: 14, fontWeight: '500' },
+    mdNormal: { fontSize: 15, color: '#1E293B', lineHeight: 23 },
+    mdBold: { fontSize: 15, color: '#312E81', fontWeight: '800', lineHeight: 23 },
+    mdHeading: { fontSize: 17, color: '#0F172A', fontWeight: '800', marginTop: 8, marginBottom: 6, letterSpacing: -0.2 },
+    standardLine: { marginVertical: 3 },
+    bulletLine: { marginVertical: 3, paddingLeft: 6 },
 
-    headerButtonWrapper: { width: '100%', alignItems: 'center', marginVertical: 12, paddingBottom: 10 },
-    loadMoreButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EEF2FF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#D2D5FF' },
-    loadMoreButtonText: { color: '#4F46E5', fontSize: 13, fontWeight: '700' }
+    headerButtonWrapper: { width: '100%', alignItems: 'center', marginTop: 8, marginBottom: 16 },
+    loadMoreButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
+    loadMoreButtonText: { color: '#4F46E5', fontSize: 12, fontWeight: '700' }
 });
 
 export default TeachScreen;

@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView,
-    TouchableOpacity, ActivityIndicator, Alert
+    TouchableOpacity, ActivityIndicator, Alert, StatusBar
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../context/AuthContext';
-import { UserContext } from '../context/UserContext'; // Added
+import { UserContext } from '../context/UserContext';
 import { useContext } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { AUTH_URL } from '../Constants/Api';
 
@@ -23,7 +24,7 @@ const checkProfileCompletion = (user) => {
 
 const ProfileScreen = ({ navigation }) => {
     const { signOut, userData, userToken, testCount, updateUser } = useContext(AuthContext);
-    const { roadmap } = useContext(UserContext); // Added user context for active roadmap metadata
+    const { roadmap } = useContext(UserContext);
 
     const completion = checkProfileCompletion(userData);
     const testsCompleted = testCount || 0;
@@ -66,21 +67,21 @@ const ProfileScreen = ({ navigation }) => {
     };
 
     const getRoleColor = (role) => {
-        const colors = { STUDENT: '#9788FB', TEACHER: '#3B82F6', INDIVIDUAL: '#10B981', TPO: '#F97316' };
-        return colors[role] || '#9788FB';
+        const colors = { STUDENT: '#4F46E5', TEACHER: '#2563EB', INDIVIDUAL: '#059669', TPO: '#EA580C' };
+        return colors[role] || '#4F46E5';
     };
 
     const roleColor = getRoleColor(userData?.role);
     const profileProgress = (completion.basicDone ? 30 : 0) + (completion.academicDone ? 70 : 0);
     const allTestsDone = testsCompleted >= 3;
 
-    // Get current tracking learning scope safe attributes
     const activeSubject = roadmap?.title || roadmap?.subject || userData?.targetCourse || 'My Studies';
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+            <StatusBar barStyle="light-content" backgroundColor={roleColor} />
 
-            {/* ── Hero ── */}
+            {/* ── Premium Hero Header ── */}
             <View style={[styles.heroSection, { backgroundColor: roleColor }]}>
                 <View style={styles.avatarRing}>
                     <View style={[styles.avatar, { borderColor: roleColor }]}>
@@ -93,19 +94,21 @@ const ProfileScreen = ({ navigation }) => {
                 <Text style={styles.userName}>{userData?.name || 'Your Name'}</Text>
                 <Text style={styles.userEmail}>{userData?.email || ''}</Text>
 
-                <View style={styles.roleBadge}>
-                    <Text style={[styles.roleBadgeText, { color: roleColor }]}>
-                        {userData?.role || 'STUDENT'}
-                    </Text>
-                </View>
+                <View style={styles.headerMetaRow}>
+                    <View style={styles.roleBadge}>
+                        <Text style={[styles.roleBadgeText, { color: roleColor }]}>
+                            {userData?.role || 'STUDENT'}
+                        </Text>
+                    </View>
 
-                <View style={[
-                    styles.completionBadge,
-                    { backgroundColor: completion.allDone ? 'rgba(74,222,128,0.2)' : 'rgba(255,200,0,0.2)' }
-                ]}>
-                    <Text style={styles.completionBadgeText}>
-                        {completion.allDone ? '✅ Profile Complete' : '⚠️ Profile Incomplete'}
-                    </Text>
+                    <View style={[
+                        styles.completionBadge,
+                        { backgroundColor: completion.allDone ? 'rgba(52,211,153,0.15)' : 'rgba(245,158,11,0.15)' }
+                    ]}>
+                        <Text style={[styles.completionBadgeText, { color: completion.allDone ? '#34D399' : '#F59E0B' }]}>
+                            {completion.allDone ? '● Verified' : '○ Incomplete'}
+                        </Text>
+                    </View>
                 </View>
 
                 {!completion.allDone && (
@@ -113,12 +116,12 @@ const ProfileScreen = ({ navigation }) => {
                         <View style={styles.completionBarBg}>
                             <View style={[styles.completionBarFill, { width: `${profileProgress}%` }]} />
                         </View>
-                        <Text style={styles.completionPercent}>{profileProgress}% complete</Text>
+                        <Text style={styles.completionPercent}>{profileProgress}% Details Filled</Text>
                     </View>
                 )}
             </View>
 
-            {/* ── Info Strip ── */}
+            {/* ── Floating Institution Info Strip ── */}
             {(userData?.university || userData?.department) && (
                 <View style={styles.infoStrip}>
                     {userData?.university && (
@@ -127,101 +130,109 @@ const ProfileScreen = ({ navigation }) => {
                             <Text style={styles.infoChipText} numberOfLines={1}>{userData.university}</Text>
                         </View>
                     )}
+                    {userData?.university && userData?.department && <View style={styles.stripDivider} />}
                     {userData?.department && (
                         <View style={styles.infoChip}>
-                            <Text style={styles.infoChipIcon}>📚</Text>
+                            <Text style={styles.infoChipIcon}>🎓</Text>
                             <Text style={styles.infoChipText} numberOfLines={1}>{userData.department}</Text>
                         </View>
                     )}
                 </View>
             )}
 
-            {/* ── Sections ── */}
-            <View style={styles.sectionsContainer}>
+            {/* ── Content Sections ── */}
+            <View style={[styles.sectionsContainer, !(userData?.university || userData?.department) && { marginTop: 15 }]}>
                 <Text style={styles.sectionGroupLabel}>PROFILE SETTINGS</Text>
 
                 <ProfileMenuItem
-                    icon="👤"
-                    title="Basic Info"
-                    subtitle={completion.basicDone ? 'Name, phone & gender added' : 'Add your personal details'}
+                    icon="user"
+                    iconColor="#4F46E5"
+                    bgColor="#EEF2FF"
+                    title="Basic Information"
+                    subtitle={completion.basicDone ? 'Personal details updated' : 'Configure your name, phone & gender'}
                     status={completion.basicDone ? 'done' : 'pending'}
                     onPress={() => navigation.navigate('EditBasicInfo')}
                 />
 
                 <ProfileMenuItem
-                    icon="🎓"
-                    title="Academic Info"
+                    icon="book"
+                    iconColor="#3B82F6"
+                    bgColor="#EFF6FF"
+                    title="Academic & Branch Details"
                     subtitle={completion.academicDone
                         ? `${userData?.targetCourse || 'Course'} · ${userData?.university || ''}`
-                        : 'Add university & course details'}
+                        : 'Link university and targeted syllabus streams'}
                     status={completion.academicDone ? 'done' : 'pending'}
                     onPress={() => navigation.navigate('EditLearningInfo')}
                 />
 
-                <Text style={[styles.sectionGroupLabel, { marginTop: 24 }]}>LEARNING</Text>
+                <Text style={styles.sectionGroupLabel}>AI LEARNING ENGINE</Text>
 
                 <ProfileMenuItem
-                    icon="🗺️"
-                    title="My Roadmap"
+                    icon="map"
+                    iconColor="#10B981"
+                    bgColor="#ECFDF5"
+                    title="My Dynamic Roadmap"
                     subtitle={allTestsDone
-                        ? 'View your AI learning path'
-                        : `Complete ${3 - testsCompleted} more test${3 - testsCompleted !== 1 ? 's' : ''} to unlock`}
+                        ? 'View active adaptive curriculum path'
+                        : `Complete ${3 - testsCompleted} more skill assessment tests to unlock`}
                     status={allTestsDone ? 'done' : 'pending'}
                     onPress={() => navigation.navigate('Roadmap')}
                 />
 
                 <ProfileMenuItem
-                    icon="📋"
-                    title="My Tests"
-                    subtitle={`${testsCompleted}/3 assessment tests completed`}
+                    icon="clipboard"
+                    iconColor="#8B5CF6"
+                    bgColor="#F5F3FF"
+                    title="Diagnostic Testing"
+                    subtitle={`${testsCompleted}/3 milestones verified`}
                     status={allTestsDone ? 'done' : 'neutral'}
                     onPress={() => navigation.navigate('TestScreen')}
                 />
 
-                {/* ── New Reminder Navigation Integration Button ── */}
                 <ProfileMenuItem
-                    icon="⏰"
-                    title="Study Reminders"
-                    subtitle={`Set daily alarms for ${activeSubject}`}
-                    status={allTestsDone ? 'neutral' : 'neutral'}
+                    icon="alarm"
+                    iconColor="#EF4444"
+                    bgColor="#FEF2F2"
+                    title="Study Reminders & Alarms"
+                    subtitle={`Set exact system timers for ${activeSubject}`}
+                    status="neutral"
                     onPress={() => navigation.navigate('Reminder', {
                         subjectName: activeSubject,
                         roadmapId: roadmap?.id || null
                     })}
                 />
 
-                <Text style={[styles.sectionGroupLabel, { marginTop: 24 }]}>ACCOUNT</Text>
+                <Text style={styles.sectionGroupLabel}>SYSTEM</Text>
 
-                <TouchableOpacity style={styles.logoutItem} onPress={handleSignOut} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.logoutItem} onPress={handleSignOut} activeOpacity={0.8}>
                     <View style={styles.logoutIconBox}>
-                        <Text style={styles.menuIcon}>🚪</Text>
+                        <Ionicons name="log-out-outline" size={20} color="#EF4444" />
                     </View>
-                    <Text style={styles.logoutText}>Sign Out</Text>
-                    <Text style={styles.menuArrow}>→</Text>
+                    <Text style={styles.logoutText}>Sign Out Account</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#FCA5A5" />
                 </TouchableOpacity>
             </View>
 
-            <View style={{ height: 50 }} />
+            <View style={{ height: 40 }} />
         </ScrollView>
     );
 };
 
-const ProfileMenuItem = ({ icon, title, subtitle, status, onPress }) => {
-    const statusColors = { done: '#4ADE80', pending: '#FBBF24', neutral: '#9788FB' };
-    const statusIcons  = { done: '✓', pending: '!', neutral: '→' };
+const ProfileMenuItem = ({ icon, iconColor, bgColor, title, subtitle, status, onPress }) => {
+    const statusColors = { done: '#10B981', pending: '#F59E0B', neutral: '#6366F1' };
+    const statusIcons  = { done: 'checkmark-circle', pending: 'alert-circle', neutral: 'arrow-forward-circle' };
 
     return (
         <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
-            <View style={styles.menuIconBox}>
-                <Text style={styles.menuIcon}>{icon}</Text>
+            <View style={[styles.menuIconBox, { backgroundColor: bgColor }]}>
+                <Ionicons name={`${icon}-outline`} size={20} color={iconColor} />
             </View>
             <View style={styles.menuTextGroup}>
                 <Text style={styles.menuTitle}>{title}</Text>
                 <Text style={styles.menuSubtitle} numberOfLines={1}>{subtitle}</Text>
             </View>
-            <View style={[styles.menuStatusDot, { backgroundColor: statusColors[status] }]}>
-                <Text style={styles.menuStatusIcon}>{statusIcons[status]}</Text>
-            </View>
+            <Ionicons name={statusIcons[status]} size={20} color={statusColors[status]} style={styles.statusIconStyle} />
         </TouchableOpacity>
     );
 };
@@ -229,79 +240,81 @@ const ProfileMenuItem = ({ icon, title, subtitle, status, onPress }) => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FE' },
     heroSection: {
-        paddingTop: 60, paddingBottom: 32,
+        paddingTop: 50, paddingBottom: 36,
         alignItems: 'center', paddingHorizontal: 20,
-        borderBottomLeftRadius: 36, borderBottomRightRadius: 36,
+        borderBottomLeftRadius: 32, borderBottomRightRadius: 32,
     },
     avatarRing: {
-        width: 104, height: 104, borderRadius: 52,
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        justifyContent: 'center', alignItems: 'center', marginBottom: 14,
+        width: 100, height: 104, borderRadius: 50,
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        justifyContent: 'center', alignItems: 'center', marginBottom: 12,
     },
     avatar: {
-        width: 90, height: 90, borderRadius: 45,
+        width: 86, height: 86, borderRadius: 43,
         backgroundColor: '#FFF', borderWidth: 3,
         justifyContent: 'center', alignItems: 'center',
     },
-    avatarText: { fontSize: 32, fontWeight: '900' },
-    userName: { color: '#FFF', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
-    userEmail: { color: 'rgba(255,255,255,0.75)', fontSize: 13, marginTop: 3 },
+    avatarText: { fontSize: 30, fontWeight: '800' },
+    userName: { color: '#FFF', fontSize: 22, fontWeight: '800', letterSpacing: -0.2 },
+    userEmail: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 2, fontWeight: '400' },
+    headerMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
     roleBadge: {
-        backgroundColor: '#FFF', marginTop: 10,
-        paddingHorizontal: 16, paddingVertical: 5, borderRadius: 20,
+        backgroundColor: '#FFF',
+        paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12,
     },
-    roleBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1 },
-    completionBadge: { marginTop: 12, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 12 },
-    completionBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-    completionBarContainer: { marginTop: 14, width: '80%', alignItems: 'center' },
-    completionBarBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3, width: '100%' },
-    completionBarFill: { height: 6, backgroundColor: '#FFF', borderRadius: 3 },
-    completionPercent: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 5 },
+    roleBadgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    completionBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+    completionBadgeText: { fontSize: 11, fontWeight: '700' },
+    completionBarContainer: { marginTop: 18, width: '75%', alignItems: 'center' },
+    completionBarBg: { height: 5, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 2.5, width: '100%' },
+    completionBarFill: { height: 5, backgroundColor: '#FFF', borderRadius: 2.5 },
+    completionPercent: { color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 6, fontWeight: '500' },
+
+    // Floating Info Strip Panel
     infoStrip: {
-        flexDirection: 'row', flexWrap: 'wrap', gap: 8,
-        paddingHorizontal: 20, paddingVertical: 14,
-        backgroundColor: '#FFF', marginHorizontal: 20, marginTop: -1,
-        borderRadius: 16, elevation: 4,
-        shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 8,
-        transform: [{ translateY: -20 }],
+        flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
+        paddingHorizontal: 16, paddingVertical: 14,
+        backgroundColor: '#FFF', marginHorizontal: 20,
+        borderRadius: 20, elevation: 3,
+        shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 10,
+        transform: [{ translateY: -18 }],
+        borderWidth: 1, borderColor: '#EDF2F7'
     },
-    infoChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    infoChip: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center' },
     infoChipIcon: { fontSize: 13 },
-    infoChipText: { fontSize: 12, color: '#475569', fontWeight: '600', maxWidth: 130 },
-    sectionsContainer: { paddingHorizontal: 20, marginTop: -4 },
+    infoChipText: { fontSize: 13, color: '#1E293B', fontWeight: '700', maxWidth: 120 },
+    stripDivider: { width: 1, height: 16, backgroundColor: '#E2E8F0' },
+
+    sectionsContainer: { paddingHorizontal: 20, marginTop: -6 },
     sectionGroupLabel: {
-        fontSize: 11, fontWeight: '800', color: '#94A3B8',
-        letterSpacing: 1.2, marginBottom: 10, marginLeft: 4, marginTop: 30,
+        fontSize: 10, fontWeight: '800', color: '#94A3B8',
+        letterSpacing: 1.5, marginBottom: 12, marginLeft: 4, marginTop: 24,
     },
     menuItem: {
         flexDirection: 'row', alignItems: 'center',
-        backgroundColor: '#FFF', borderRadius: 18,
-        padding: 16, marginBottom: 10,
-        elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5,
+        backgroundColor: '#FFF', borderRadius: 20,
+        padding: 14, marginBottom: 10,
+        borderWidth: 1, borderColor: '#EDF2F7',
+        elevation: 1, shadowColor: '#000', shadowOpacity: 0.01, shadowRadius: 3,
     },
     menuIconBox: {
-        width: 44, height: 44, borderRadius: 13,
-        backgroundColor: '#F1F5F9',
+        width: 42, height: 44, borderRadius: 14,
         justifyContent: 'center', alignItems: 'center', marginRight: 14,
     },
-    menuIcon: { fontSize: 20 },
-    menuTextGroup: { flex: 1 },
-    menuTitle: { fontSize: 15, fontWeight: '700', color: '#1A1A1A' },
-    menuSubtitle: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
-    menuStatusDot: {
-        width: 26, height: 26, borderRadius: 13,
-        justifyContent: 'center', alignItems: 'center',
-    },
-    menuStatusIcon: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-    menuArrow: { fontSize: 16, color: '#CBD5E1' },
+    menuTextGroup: { flex: 1, paddingRight: 6 },
+    menuTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+    menuSubtitle: { fontSize: 12, color: '#64748B', marginTop: 3, fontWeight: '400' },
+    statusIconStyle: { opacity: 0.95 },
+
+    // System Actions
     logoutItem: {
         flexDirection: 'row', alignItems: 'center',
-        backgroundColor: '#FFF2F2', borderRadius: 18,
-        padding: 16, marginBottom: 10,
+        backgroundColor: '#FFF5F5', borderRadius: 20,
+        padding: 14, marginBottom: 10,
         borderWidth: 1, borderColor: '#FEE2E2',
     },
     logoutIconBox: {
-        width: 44, height: 44, borderRadius: 13,
+        width: 42, height: 44, borderRadius: 14,
         backgroundColor: '#FEE2E2',
         justifyContent: 'center', alignItems: 'center', marginRight: 14,
     },

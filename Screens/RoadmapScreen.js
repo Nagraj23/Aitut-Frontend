@@ -26,60 +26,81 @@ const RoadmapDetailScreen = ({ navigation }) => {
 
     const getTypeStyles = (type) => {
         const lowerType = type?.toLowerCase() || '';
-        if (lowerType.includes('test')) return { color: '#EF4444', bg: '#FEE2E2', icon: 'flask-outline' };
-        if (lowerType.includes('problem')) return { color: '#F59E0B', bg: '#FEF3C7', icon: 'code-slash' };
-        if (lowerType.includes('revision')) return { color: '#8B5CF6', bg: '#EDE9FE', icon: 'sync-circle-outline' };
-        return { color: '#6366F1', bg: '#EEF2FF', icon: 'play-circle-outline' }; // Standard Learning
+        if (lowerType.includes('test')) return { color: '#EF4444', bg: '#FEE2E2', icon: 'flask-outline', label: 'Test' };
+        if (lowerType.includes('problem')) return { color: '#F59E0B', bg: '#FEF3C7', icon: 'code-slash', label: 'Problem' };
+        if (lowerType.includes('revision')) return { color: '#8B5CF6', bg: '#EDE9FE', icon: 'sync-circle-outline', label: 'Revision' };
+        return { color: '#6366F1', bg: '#EEF2FF', icon: 'play-circle-outline', label: 'Learn' };
     };
 
-    const renderStep = ({ item }) => {
+    const completedCount = roadmap?.daily_plan?.filter(s => s.is_completed).length || 0;
+    const totalCount = roadmap?.daily_plan?.length || 0;
+
+    const renderStep = ({ item, index }) => {
         const typeStyle = getTypeStyles(item.type);
-        const isNextTask = !item.is_completed;
 
         return (
-            <View style={[
-                styles.card,
-                item.is_completed && styles.cardCompleted,
-                { borderLeftColor: typeStyle.color }
-            ]}>
-                <View style={styles.cardHeader}>
-                    <View style={[styles.dayBadge, { backgroundColor: typeStyle.bg }]}>
-                        <Text style={[styles.dayText, { color: typeStyle.color }]}>DAY {item.day}</Text>
+            <View style={styles.stepRow}>
+                {/* Timeline spine */}
+                <View style={styles.timelineCol}>
+                    <View style={[
+                        styles.timelineDot,
+                        item.is_completed
+                            ? styles.timelineDotDone
+                            : { backgroundColor: typeStyle.color, shadowColor: typeStyle.color }
+                    ]}>
+                        {item.is_completed
+                            ? <Ionicons name="checkmark" size={12} color="#fff" />
+                            : <Text style={styles.timelineDotText}>{item.day}</Text>
+                        }
                     </View>
-
-                    {item.is_completed ? (
-                        <Ionicons name="checkmark-done-circle" size={24} color="#22C55E" />
-                    ) : (
-                        <View style={styles.activeDot} />
+                    {index < totalCount - 1 && (
+                        <View style={[
+                            styles.timelineLine,
+                            item.is_completed && styles.timelineLineDone
+                        ]} />
                     )}
                 </View>
 
-                <Text style={styles.topic}>{item.topic}</Text>
-                <Text style={styles.task}>{item.task}</Text>
-
-                <View style={styles.cardFooter}>
-                    <View style={styles.footerInfo}>
-                        <Ionicons name={typeStyle.icon} size={16} color={typeStyle.color} style={{marginRight: 4}} />
-                        <Text style={[styles.typeText, { color: typeStyle.color }]}>{item.type}</Text>
+                {/* Card */}
+                <View style={[
+                    styles.card,
+                    item.is_completed && styles.cardCompleted,
+                ]}>
+                    {/* Top row */}
+                    <View style={styles.cardTopRow}>
+                        <View style={[styles.typePill, { backgroundColor: typeStyle.bg }]}>
+                            <Ionicons name={typeStyle.icon} size={12} color={typeStyle.color} />
+                            <Text style={[styles.typePillText, { color: typeStyle.color }]}>
+                                {item.type?.toUpperCase()}
+                            </Text>
+                        </View>
+                        {item.is_completed && (
+                            <View style={styles.doneBadge}>
+                                <Text style={styles.doneText}>✓ DONE</Text>
+                            </View>
+                        )}
                     </View>
 
-                    {!item.is_completed ? (
+                    {/* Content */}
+                    <Text style={[styles.topic, item.is_completed && styles.topicDone]}>
+                        {item.topic}
+                    </Text>
+                    <Text style={styles.task}>{item.task}</Text>
+
+                    {/* Footer */}
+                    {!item.is_completed && (
                         <TouchableOpacity
                             style={[styles.learnBtn, { backgroundColor: typeStyle.color }]}
                             onPress={() => navigation.navigate('Teach', {
                                 step: item,
-                                subject: roadmap?.subject // ✅ Passing subject here
+                                subject: roadmap?.subject
                             })}
                         >
                             <Text style={styles.learnText}>
-                                {item.type.includes('Test') ? 'Start Test' : 'Continue'}
+                                {item.type?.includes('Test') ? 'Start Test' : 'Continue'}
                             </Text>
-                            <Ionicons name="chevron-forward" size={16} color="#fff" />
+                            <Ionicons name="chevron-forward" size={15} color="#fff" />
                         </TouchableOpacity>
-                    ) : (
-                        <View style={styles.completedBadge}>
-                            <Text style={styles.completedText}>DONE</Text>
-                        </View>
                     )}
                 </View>
             </View>
@@ -97,33 +118,7 @@ const RoadmapDetailScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" />
-
-            <View style={styles.header}>
-                <View style={styles.headerTop}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color="#1E293B" />
-                    </TouchableOpacity>
-                    <Text style={styles.phaseLabel}>ROADMAP PROGRESS</Text>
-                    <View style={{width: 24}} />
-                </View>
-
-                <Text style={styles.phaseTitle}>{roadmap?.title}</Text>
-
-                <View style={styles.subjectRow}>
-                    <View style={styles.subjectBadge}>
-                        <Text style={styles.subjectText}>⚡ {roadmap?.subject?.toUpperCase()}</Text>
-                    </View>
-                    <Text style={styles.statsText}>{roadmap?.daily_plan?.length} Milestones</Text>
-                </View>
-
-                <View style={styles.progressSection}>
-                    <View style={styles.progressBarBg}>
-                        <View style={[styles.progressFill, { width: `${roadmap?.progress || 0}%` }]} />
-                    </View>
-                    <Text style={styles.progressPercent}>{roadmap?.progress || 0}% Complete</Text>
-                </View>
-            </View>
+            <StatusBar barStyle="light-content" backgroundColor="#4F46E5" />
 
             <FlatList
                 data={roadmap?.daily_plan || []}
@@ -131,93 +126,250 @@ const RoadmapDetailScreen = ({ navigation }) => {
                 renderItem={renderStep}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                ListHeaderComponent={() => (
+                    <View>
+                        {/* Hero Header */}
+                        <View style={styles.heroHeader}>
+                            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+                                <Ionicons name="arrow-back" size={20} color="#fff" />
+                            </TouchableOpacity>
+
+                            <View style={styles.heroMeta}>
+                                <Text style={styles.heroEyebrow}>LEARNING ROADMAP</Text>
+                                <Text style={styles.heroTitle}>{roadmap?.title}</Text>
+                            </View>
+
+                            <View style={styles.subjectChip}>
+                                <Text style={styles.subjectChipText}>⚡ {roadmap?.subject?.toUpperCase()}</Text>
+                            </View>
+
+                            {/* Stats row */}
+                            <View style={styles.statsRow}>
+                                <View style={styles.statBox}>
+                                    <Text style={styles.statNum}>{completedCount}</Text>
+                                    <Text style={styles.statLabel}>Done</Text>
+                                </View>
+                                <View style={styles.statDivider} />
+                                <View style={styles.statBox}>
+                                    <Text style={styles.statNum}>{totalCount - completedCount}</Text>
+                                    <Text style={styles.statLabel}>Remaining</Text>
+                                </View>
+                                <View style={styles.statDivider} />
+                                <View style={styles.statBox}>
+                                    <Text style={styles.statNum}>{totalCount}</Text>
+                                    <Text style={styles.statLabel}>Total Days</Text>
+                                </View>
+                            </View>
+
+                            {/* Progress bar */}
+                            <View style={styles.progressWrap}>
+                                <View style={styles.progressTrack}>
+                                    <View style={[styles.progressFill, { width: `${roadmap?.progress || 0}%` }]} />
+                                </View>
+                                <Text style={styles.progressLabel}>{roadmap?.progress || 0}%</Text>
+                            </View>
+                        </View>
+
+                        {/* Section title */}
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Your Daily Plan</Text>
+                            <View style={styles.sectionPill}>
+                                <Text style={styles.sectionPillText}>{totalCount} milestones</Text>
+                            </View>
+                        </View>
+                    </View>
+                )}
             />
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F1F5F9' },
+    container: { flex: 1, backgroundColor: '#F0F2FF' },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
-    loaderMsg: { marginTop: 12, fontSize: 16, fontWeight: '600', color: '#6366F1' },
+    loaderMsg: { marginTop: 14, fontSize: 15, fontWeight: '600', color: '#6366F1' },
 
-    /* HEADER */
-    header: {
-        backgroundColor: '#fff',
-        paddingHorizontal: 20,
-        paddingBottom: 25,
-        paddingTop: 10,
-        borderBottomLeftRadius: 32,
-        borderBottomRightRadius: 32,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.05,
-        shadowRadius: 15,
-        elevation: 10,
+    /* HERO HEADER */
+    heroHeader: {
+        backgroundColor: '#4F46E5',
+        paddingHorizontal: 22,
+        paddingTop: 16,
+        paddingBottom: 32,
+        borderBottomLeftRadius: 36,
+        borderBottomRightRadius: 36,
     },
-    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    phaseLabel: { fontSize: 12, fontWeight: '800', color: '#94A3B8', letterSpacing: 1.5 },
-    phaseTitle: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
+    backBtn: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 18,
+    },
+    heroMeta: { marginBottom: 14 },
+    heroEyebrow: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 1.5,
+        marginBottom: 6,
+    },
+    heroTitle: {
+        fontSize: 24,
+        fontWeight: '900',
+        color: '#fff',
+        lineHeight: 30,
+    },
+    subjectChip: {
+        alignSelf: 'flex-start',
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        borderRadius: 20,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        marginBottom: 22,
+    },
+    subjectChipText: { fontSize: 12, fontWeight: '800', color: '#fff' },
 
-    subjectRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
-    subjectBadge: { backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginRight: 10 },
-    subjectText: { fontSize: 12, fontWeight: '800', color: '#6366F1' },
-    statsText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+    statsRow: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        borderRadius: 20,
+        padding: 16,
+        marginBottom: 20,
+        alignItems: 'center',
+        justifyContent: 'space-around',
+    },
+    statBox: { alignItems: 'center', flex: 1 },
+    statNum: { fontSize: 22, fontWeight: '900', color: '#fff' },
+    statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.65)', fontWeight: '600', marginTop: 2 },
+    statDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.2)' },
 
-    progressSection: { marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    progressBarBg: { flex: 1, height: 8, backgroundColor: '#E2E8F0', borderRadius: 4, marginRight: 15, overflow: 'hidden' },
-    progressFill: { height: '100%', backgroundColor: '#6366F1', borderRadius: 4 },
-    progressPercent: { fontSize: 13, fontWeight: '800', color: '#6366F1', width: 90, textAlign: 'right' },
+    progressWrap: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    progressTrack: {
+        flex: 1,
+        height: 7,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    progressFill: { height: '100%', backgroundColor: '#A5F3FC', borderRadius: 4 },
+    progressLabel: { fontSize: 13, fontWeight: '800', color: '#A5F3FC', width: 38, textAlign: 'right' },
 
-    /* LIST */
-    listContent: { padding: 20, paddingBottom: 40 },
+    /* SECTION HEADER */
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingTop: 28,
+        paddingBottom: 14,
+    },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+    sectionPill: {
+        backgroundColor: '#E0E7FF',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+    },
+    sectionPillText: { fontSize: 12, fontWeight: '700', color: '#4338CA' },
 
-    /* CARDS */
+    /* TIMELINE + CARD */
+    listContent: { paddingBottom: 48 },
+    stepRow: {
+        flexDirection: 'row',
+        paddingHorizontal: 20,
+        marginBottom: 4,
+    },
+
+    timelineCol: {
+        width: 36,
+        alignItems: 'center',
+        paddingTop: 4,
+    },
+    timelineDot: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        elevation: 4,
+        zIndex: 1,
+    },
+    timelineDotDone: {
+        backgroundColor: '#22C55E',
+        shadowColor: '#22C55E',
+    },
+    timelineDotText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+    timelineLine: {
+        width: 2,
+        flex: 1,
+        minHeight: 24,
+        backgroundColor: '#CBD5E1',
+        marginTop: 3,
+        marginBottom: 3,
+    },
+    timelineLineDone: { backgroundColor: '#22C55E' },
+
     card: {
+        flex: 1,
         backgroundColor: '#fff',
-        borderRadius: 24,
-        padding: 20,
-        marginBottom: 16,
-        borderLeftWidth: 6, // Colored accent
-        shadowColor: '#64748B',
+        borderRadius: 22,
+        padding: 18,
+        marginLeft: 12,
+        marginBottom: 14,
+        shadowColor: '#4F46E5',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
+        shadowOpacity: 0.07,
         shadowRadius: 12,
         elevation: 3,
     },
-    cardCompleted: { opacity: 0.6, backgroundColor: '#F8FAFC' },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    dayBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-    dayText: { fontSize: 12, fontWeight: '900' },
-    activeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#6366F1' },
-
-    topic: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginTop: 12 },
-    task: { fontSize: 14, color: '#64748B', marginTop: 8, lineHeight: 20, fontWeight: '500' },
-
-    cardFooter: {
+    cardCompleted: {
+        backgroundColor: '#F8FAFC',
+        opacity: 0.75,
+    },
+    cardTopRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 20,
-        paddingTop: 15,
-        borderTopWidth: 1,
-        borderTopColor: '#F1F5F9'
+        marginBottom: 12,
     },
-    footerInfo: { flexDirection: 'row', alignItems: 'center' },
-    typeText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    typePill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 10,
+    },
+    typePillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+
+    doneBadge: {
+        backgroundColor: '#DCFCE7',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+    },
+    doneText: { color: '#16A34A', fontSize: 10, fontWeight: '900' },
+
+    topic: { fontSize: 16, fontWeight: '800', color: '#1E293B', marginBottom: 6 },
+    topicDone: { color: '#94A3B8' },
+    task: { fontSize: 13, color: '#64748B', lineHeight: 19, fontWeight: '500' },
 
     learnBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 16,
+        justifyContent: 'center',
+        marginTop: 16,
+        paddingVertical: 12,
         borderRadius: 14,
         gap: 6,
-        elevation: 2
+        elevation: 2,
     },
-    learnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-    completedBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: '#DCFCE7' },
-    completedText: { color: '#16A34A', fontSize: 11, fontWeight: '900' }
+    learnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
 
 export default RoadmapDetailScreen;

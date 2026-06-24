@@ -10,7 +10,10 @@
         "expo-notifications",
         {
           "icon": "./assets/chat.png",
-          "color": "#4F46E5"
+          "color": "#4F46E5",
+          "sounds": [
+            "./assets/alarm_tone.mp3"
+          ]
         }
       ]
     ],
